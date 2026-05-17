@@ -1414,6 +1414,14 @@ def main():
     There should be actionable warnings, above, that led to this.""")
         sys.exit(1)
 
+    # Remove any existing compile_commands.json before opening; handles the common
+    # case where it's a symlink (e.g. pointing into a cmake build dir), which would
+    # otherwise produce an inscrutable open() error. https://github.com/hedronvision/bazel-compile-commands-extractor/issues/105
+    try:
+        os.remove('compile_commands.json')
+    except FileNotFoundError:
+        pass
+
     # Chain output into compile_commands.json
     with open('compile_commands.json', 'w') as output_file:
         json.dump(
