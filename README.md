@@ -193,6 +193,7 @@ The tool has a few parameters that control output generation:
 * `--bcce-copt[=`_option_`]` — Pass an additional `option` to every arg list in `compile_commands.json` (can be repeated). As above, you can also do this on the `clangd` side via compileflags.
 * `--bcce-threads[=`_N_`]` — Override the worker-pool size for one run. Falls back to the macro `max_threads`, then the executor default (`os.cpu_count()`).
 * `--bcce-output-dir[=`_dir_`]` — Override the directory `compile_commands.json` is written to. Falls back to the macro `output_dir`, then the workspace root.
+* `--bcce-exclude-headers=`_all_`|`_external_`|`_none_ — Override the `exclude_headers` macro parameter for a single run. `all` skips header extraction entirely (fastest), `external` keeps only main-workspace headers, `none` (or empty) restores the macro default.
 
 As with options passed through to `bazel aquery`, these flags must be separated from the bazel invocation by `--`. For example, to suppress colored output:
 

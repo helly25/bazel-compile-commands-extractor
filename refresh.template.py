@@ -80,6 +80,19 @@ def _output_dir():
     return {output_dir}
 
 
+def _exclude_headers():
+    """Header-exclusion mode: --bcce-exclude-headers > macro `exclude_headers`.
+
+    One of "all", "external", "" / None. Invalid values warn and fall through.
+    """
+    runtime = _get_last_arg('bcce-exclude-headers')
+    if runtime is not None:
+        if runtime in ("all", "external", "", "none"):
+            return "" if runtime == "none" else runtime
+        log_warning(f">>> Ignoring invalid --bcce-exclude-headers={runtime!r}; expected one of all|external|none.")
+    return {exclude_headers}
+
+
 @functools.lru_cache(maxsize=None)
 def _non_bcce_args():
     """Returns `sys.argv[1:]` with all bcce args removed."""
@@ -661,9 +674,9 @@ def _get_headers(compile_action, source_path: str):
     # As an alternative approach, you might consider trying to get the headers by inspecting the Middlemen actions in the aquery output, but I don't see a way to get just the ones actually #included--or an easy way to get the system headers--without invoking the preprocessor's header search logic.
         # For more on this, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/5#issuecomment-1031148373
 
-    if {exclude_headers} == "all":
+    if _exclude_headers() == "all":
         return set()
-    elif {exclude_headers} == "external" and not {exclude_external_sources} and compile_action.is_external:
+    elif _exclude_headers() == "external" and not {exclude_external_sources} and compile_action.is_external:
         # Shortcut - an external action can't include headers in the workspace (or, non-external headers)
         # The `not {exclude_external_sources}`` clause makes sure is_external was precomputed; there are no external actions if they've already been filtered in the process of excluding external sources.
         return set()
@@ -742,7 +755,7 @@ def _get_headers(compile_action, source_path: str):
         elif not headers and cached_headers: # If we failed to get headers, we'll fall back on a stale cache.
             headers = set(cached_headers)
 
-    if {exclude_headers} == "external":
+    if _exclude_headers() == "external":
         headers = {header for header in headers if _file_is_in_main_workspace_and_not_external(header)}
 
     return headers
@@ -1289,7 +1302,7 @@ def _convert_compile_commands(aquery_output):
     """
 
     # Tag actions as external if we're going to need to know that later.
-    if {exclude_headers} == "external" and not {exclude_external_sources}:
+    if _exclude_headers() == "external" and not {exclude_external_sources}:
         targets_by_id = {target.id : target.label for target in aquery_output.targets}
         for action in aquery_output.actions:
             # Tag action as external if it's created by an external target
