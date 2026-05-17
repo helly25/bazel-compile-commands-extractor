@@ -199,6 +199,24 @@ As with options passed through to `bazel aquery`, these flags must be separated 
 
 `bazel run @hedron_compile_commands//:refresh_all -- --bcce-color=no`.
 
+#### Why isn't there a `--bcce-bazel` runtime flag?
+
+The `bazel_command` macro parameter (added by [#12](https://github.com/helly25/bazel-compile-commands-extractor/pull/12), which backports [hedronvision#215](https://github.com/hedronvision/bazel-compile-commands-extractor/pull/215)) is intentionally **macro-only**, with no `--bcce-bazel` runtime equivalent. The reasoning:
+
+- Bazel version selection is already handled by [bazelisk](https://github.com/bazelbuild/bazelisk) + `.bazelversion`; an extractor-level override would only muddy that contract.
+- The script is invoked via `bazel run`, so the outer Bazel is already fixed at invocation time. Adding a runtime flag that controls which `bazel` the extractor's *inner* subprocesses (`bazel version`, `bazel aquery`, `bazel dump --action_cache`) shell out to invites confusion about which binary actually ran.
+- The macro param already covers the legitimate cases (wrapper scripts, alternative binary names in CI sandboxes); a per-run override would be redundant.
+
+If you have a use case that needs a runtime override here, please open an issue with the specifics.
+
+**Reversing this decision later.** If a strong use case appears (e.g. a subprocess `PATH` sanitization issue or a wrapper that needs bypassing in a single run), the change is small and additive:
+
+1. In `refresh.template.py`, change `_bazel()` from a pure template-substitution `return {bazel_command}` to consult `_get_last_arg('bcce-bazel')` first, mirroring `_threads()` / `_output_dir()` / `_exclude_headers()`.
+2. Document `--bcce-bazel=<path>` in the runtime-flags list above.
+3. No `.bzl` changes are required; the macro `bazel_command` param continues to act as the fallback.
+
+The deliberate omission is recorded both here and as a comment next to the `bazel_command` macro parameter in [`refresh_compile_commands.bzl`](./refresh_compile_commands.bzl).
+
 
 ## Editor Setup — for autocomplete based on `compile_commands.json`
 

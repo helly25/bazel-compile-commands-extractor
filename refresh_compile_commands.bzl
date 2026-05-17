@@ -65,6 +65,8 @@ def refresh_compile_commands(
         targets = None,
         exclude_headers = None,
         exclude_external_sources = False,
+        # Macro-only by design; there is no `--bcce-bazel` runtime counterpart.
+        # See "Why isn't there a `--bcce-bazel` runtime flag?" in README.md.
         bazel_command = "bazel",
         max_threads = None,
         output_dir = "",
