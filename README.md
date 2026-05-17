@@ -1,4 +1,18 @@
-# Hedron's Compile Commands Extractor for Bazel — User Interface
+# Bazel Compile Commands Extractor
+
+> **This is the [helly25](https://github.com/helly25/bazel-compile-commands-extractor) fork.**
+> The original [hedronvision/bazel-compile-commands-extractor](https://github.com/hedronvision/bazel-compile-commands-extractor)
+> repository has had no non-CI commit since 2024-06-28
+> (the founding team [joined Google DeepMind][gdm] in December 2024), and
+> tooling on current Bazel (9.x) stopped working out of the box. This
+> fork is the actively maintained version while upstream remains
+> inactive.
+>
+> * [`FORK.md`](./FORK.md) — timeline, triage / decision log of the first sweep, list of backported upstream PRs and issues
+> * [`LEGAL.md`](./LEGAL.md) — licensing context, status of Hedron Vision Inc., and the explicit commitment we make about handing the project back if Hedron reasserts stewardship
+> * [`LICENSE.md`](./LICENSE.md) — original license (unchanged; controls)
+>
+> [gdm]: https://www.linkedin.com/posts/hedronvision_hedron-vision-has-joined-google-deepmind-activity-7275631303255842818-yQw7
 
 **What is this project trying to do for me?**
 
@@ -45,24 +59,24 @@ There's a bunch of text here but only because we're trying to spell things out a
 ### First, add this tool to your Bazel setup.
 
 #### If you have a MODULE.bazel file and are using the new [bzlmod](https://bazel.build/external/migration) system
-Copy this into your `MODULE.bazel`, making sure to update to the [latest commit](https://github.com/hedronvision/bazel-compile-commands-extractor/commits/main) per the instructions below.
+Copy this into your `MODULE.bazel`, making sure to update to the [latest commit](https://github.com/helly25/bazel-compile-commands-extractor/commits/main) per the instructions below.
 
 ```Starlark
-# Hedron's Compile Commands Extractor for Bazel
-# https://github.com/hedronvision/bazel-compile-commands-extractor
-bazel_dep(name = "hedron_compile_commands", dev_dependency = True)
+# Bazel Compile Commands Extractor (helly25 fork; see FORK.md for context)
+# https://github.com/helly25/bazel-compile-commands-extractor
+bazel_dep(name = "hedron_compile_commands", dev_dependency = True)  # Bazel module name kept for backwards compat with existing consumers.
 git_override(
     module_name = "hedron_compile_commands",
-    remote = "https://github.com/hedronvision/bazel-compile-commands-extractor.git",
+    remote = "https://github.com/helly25/bazel-compile-commands-extractor.git",
     commit = "0e990032f3c5a866e72615cf67e5ce22186dcb97",
-    # Replace the commit hash (above) with the latest (https://github.com/hedronvision/bazel-compile-commands-extractor/commits/main).
+    # Replace the commit hash (above) with the latest (https://github.com/helly25/bazel-compile-commands-extractor/commits/main).
     # Even better, set up Renovate and let it do the work for you (see "Suggestion: Updates" in the README).
 )
 ```
 
 #### If you're using the traditional WORKSPACE system
 
-Copy this into the top of your Bazel `WORKSPACE` file, making sure to update to the [latest commit](https://github.com/hedronvision/bazel-compile-commands-extractor/commits/main) per the instructions below. Putting it at the top will prevent other tools from clobbering any of its dependencies with old versions; we promise to keep ours dependency versions up-to-date.
+Copy this into the top of your Bazel `WORKSPACE` file, making sure to update to the [latest commit](https://github.com/helly25/bazel-compile-commands-extractor/commits/main) per the instructions below. Putting it at the top will prevent other tools from clobbering any of its dependencies with old versions; we promise to keep ours dependency versions up-to-date.
 
 ```Starlark
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
@@ -89,14 +103,14 @@ http_archive(
 )
 
 
-# Hedron's Compile Commands Extractor for Bazel
-# https://github.com/hedronvision/bazel-compile-commands-extractor
+# Bazel Compile Commands Extractor (helly25 fork; see FORK.md for context)
+# https://github.com/helly25/bazel-compile-commands-extractor
 http_archive(
-    name = "hedron_compile_commands",
+    name = "hedron_compile_commands",  # Bazel external repo name kept for backwards compat with existing consumers.
 
-    # Replace the commit hash (0e990032f3c5a866e72615cf67e5ce22186dcb97) in both places (below) with the latest (https://github.com/hedronvision/bazel-compile-commands-extractor/commits/main), rather than using the stale one here.
+    # Replace the commit hash (0e990032f3c5a866e72615cf67e5ce22186dcb97) in both places (below) with the latest (https://github.com/helly25/bazel-compile-commands-extractor/commits/main), rather than using the stale one here.
     # Even better, set up Renovate and let it do the work for you (see "Suggestion: Updates" in the README).
-    url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/0e990032f3c5a866e72615cf67e5ce22186dcb97.tar.gz",
+    url = "https://github.com/helly25/bazel-compile-commands-extractor/archive/0e990032f3c5a866e72615cf67e5ce22186dcb97.tar.gz",
     strip_prefix = "bazel-compile-commands-extractor-0e990032f3c5a866e72615cf67e5ce22186dcb97",
     # When you first run this tool, it'll recommend a sha256 hash to put here with a message like: "DEBUG: Rule 'hedron_compile_commands' indicated that a canonical reproducible form can be obtained by modifying arguments sha256 = ..."
 )
