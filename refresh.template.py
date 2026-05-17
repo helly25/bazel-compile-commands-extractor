@@ -1163,10 +1163,14 @@ def _convert_compile_commands(aquery_output):
             assert not target.startswith('//external'), f"Expecting external targets will start with @. Found //external for action {action}, target {target}"
             action.is_external = target.startswith('@') and not target.startswith('@//')
 
-    # Process each action from Bazelisms -> file paths and their clang commands
-    # Threads instead of processes because most of the execution time is farmed out to subprocesses. No need to sidestep the GIL. Might change after https://github.com/clangd/clangd/issues/123 resolved
-    with concurrent.futures.ThreadPoolExecutor(
-        max_workers=min(32, (os.cpu_count() or 1) + 4) # Backport. Default in MIN_PY=3.8. See "using very large resources implicitly on many-core machines" in https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor
+    # Process each action from Bazelisms -> file paths and their clang commands.
+    # Use processes rather than threads: per-action work has enough CPU-bound
+    # Python (arg patching, makefile-deps parsing, regex/path manipulation) that
+    # the GIL bottlenecks a ThreadPoolExecutor to ~one core. ProcessPoolExecutor
+    # was measured ~6x faster upstream. See
+    # https://github.com/hedronvision/bazel-compile-commands-extractor/pull/250
+    with concurrent.futures.ProcessPoolExecutor(
+        max_workers=os.cpu_count() # Default before Python 3.13, after which it is os.process_cpu_count().
     ) as threadpool:
         outputs = threadpool.map(_get_cpp_command_for_files, aquery_output.actions)
 
