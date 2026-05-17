@@ -596,6 +596,10 @@ def _get_headers(compile_action, source_path: str):
     if headers is None:
         if compile_action.arguments[0].endswith('cl.exe'): # cl.exe and also clang-cl.exe
             headers, should_cache = _get_headers_msvc(compile_action, source_path)
+        elif compile_action.arguments[0].endswith(('ml.exe', 'ml64.exe')):
+            # MSVC MASM (.S/.asm assembler). Has no useful header dependency output
+            # and trips the makefile-target assertion otherwise; skip entirely.
+            headers, should_cache = set(), False
         else:
             headers, should_cache = _get_headers_gcc(compile_action, source_path, compile_action.actionKey)
 
