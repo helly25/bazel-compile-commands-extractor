@@ -191,6 +191,8 @@ The tool has a few parameters that control output generation:
 * `--bcce-color[=`_auto_`]` — Enable or disable colored output. Useful for environments where the color codes are not handled (e.g. the VSCode OUTPUT window). With the default `auto`, the environment is consulted (both [`NO_COLOR`](https://no-color.org) and `TERM`). To force off, use `0`/`no`, or pass `--nobcce-color`. To force on, use `1`/`yes`.
 * `--bcce-compiler[=`_compiler_`]` — Override the detected compiler. Useful if the compiler found in the editor environment is different from the one that should appear in `compile_commands.json`. May interfere with cross-compilation. If the goal is to retarget `clangd`, the [clangd compileflags](https://clangd.llvm.org/config#compileflags) config can do this on the `clangd` side instead.
 * `--bcce-copt[=`_option_`]` — Pass an additional `option` to every arg list in `compile_commands.json` (can be repeated). As above, you can also do this on the `clangd` side via compileflags.
+* `--bcce-threads[=`_N_`]` — Override the worker-pool size for one run. Falls back to the macro `max_threads`, then the executor default (`os.cpu_count()`).
+* `--bcce-output-dir[=`_dir_`]` — Override the directory `compile_commands.json` is written to. Falls back to the macro `output_dir`, then the workspace root.
 
 As with options passed through to `bazel aquery`, these flags must be separated from the bazel invocation by `--`. For example, to suppress colored output:
 

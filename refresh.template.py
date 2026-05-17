@@ -54,11 +54,30 @@ def _bazel():
 
 
 def _threads():
-    """User-requested worker pool size, or the executor default if unset."""
+    """Worker pool size: --bcce-threads > macro `max_threads` > executor default.
+
+    Returning `None` lets ProcessPoolExecutor pick its own default
+    (os.cpu_count(), which becomes os.process_cpu_count() on Python 3.13+).
+    """
+    runtime = _get_last_arg('bcce-threads')
+    if runtime:
+        try:
+            n = int(runtime)
+            if n > 0:
+                return n
+        except ValueError:
+            pass
+        log_warning(f">>> Ignoring invalid --bcce-threads={runtime!r}; must be a positive integer.")
     user_max_threads = {max_threads}
-    # `None` lets ProcessPoolExecutor pick its own default (os.cpu_count(),
-    # which becomes os.process_cpu_count() on Python 3.13+).
     return user_max_threads if user_max_threads else None
+
+
+def _output_dir():
+    """Output directory: --bcce-output-dir > macro `output_dir` > workspace root."""
+    runtime = _get_last_arg('bcce-output-dir')
+    if runtime is not None:
+        return runtime
+    return {output_dir}
 
 
 @functools.lru_cache(maxsize=None)
@@ -1564,8 +1583,8 @@ def main():
     There should be actionable warnings, above, that led to this.""")
         sys.exit(1)
 
-    # Resolve the output path; `output_dir` is the macro parameter (empty == cwd).
-    output_path = os.path.join({output_dir}, 'compile_commands.json')
+    # Resolve the output path: `--bcce-output-dir` flag > macro `output_dir` > workspace root.
+    output_path = os.path.join(_output_dir(), 'compile_commands.json')
 
     # Remove any existing compile_commands.json before opening; handles the common
     # case where it's a symlink (e.g. pointing into a cmake build dir), which would
