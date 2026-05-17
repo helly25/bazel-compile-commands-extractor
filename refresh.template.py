@@ -1113,7 +1113,9 @@ def _get_cpp_command_for_files(compile_action):
     Undo Bazel-isms and figures out which files clangd should apply the command to.
     """
     # Condense aquery's environment variables into a dictionary, the format you might expect.
-    compile_action.environmentVariables = {pair.key: pair.value for pair in getattr(compile_action, 'environmentVariables', [])}
+    # aquery may omit the `value` field entirely when the env var is set to empty
+    # (e.g. `build --action_env=SOME_ENV=` in .bazelrc); default to "" in that case.
+    compile_action.environmentVariables = {pair.key: getattr(pair, 'value', '') for pair in getattr(compile_action, 'environmentVariables', [])}
     if 'PATH' not in compile_action.environmentVariables: # Bazel only adds if --incompatible_strict_action_env is passed--and otherwise inherits.
         compile_action.environmentVariables['PATH'] = os.environ['PATH']
 
