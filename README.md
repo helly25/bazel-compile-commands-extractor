@@ -184,6 +184,19 @@ Adding `exclude_external_sources = True` and `exclude_headers = "external"` can 
 
 For now, we'd suggest continuing on to set up `clangd` (below). Thereafter, if you your project proves to be large enough that it stretches the capacity of `clangd` and/or this tool to index quickly, take a look at the docs at the top of [`refresh_compile_commands.bzl`](./refresh_compile_commands.bzl) for instructions on how to tune those flags and others.
 
+### Customizing the `compile_commands.json` generation
+
+The tool has a few parameters that control output generation:
+
+* `--bcce-color[=`_auto_`]` — Enable or disable colored output. Useful for environments where the color codes are not handled (e.g. the VSCode OUTPUT window). With the default `auto`, the environment is consulted (both [`NO_COLOR`](https://no-color.org) and `TERM`). To force off, use `0`/`no`, or pass `--nobcce-color`. To force on, use `1`/`yes`.
+* `--bcce-compiler[=`_compiler_`]` — Override the detected compiler. Useful if the compiler found in the editor environment is different from the one that should appear in `compile_commands.json`. May interfere with cross-compilation. If the goal is to retarget `clangd`, the [clangd compileflags](https://clangd.llvm.org/config#compileflags) config can do this on the `clangd` side instead.
+* `--bcce-copt[=`_option_`]` — Pass an additional `option` to every arg list in `compile_commands.json` (can be repeated). As above, you can also do this on the `clangd` side via compileflags.
+
+As with options passed through to `bazel aquery`, these flags must be separated from the bazel invocation by `--`. For example, to suppress colored output:
+
+`bazel run @hedron_compile_commands//:refresh_all -- --bcce-color=no`.
+
+
 ## Editor Setup — for autocomplete based on `compile_commands.json`
 
 
@@ -223,6 +236,28 @@ You may need to subsequently reload VSCode [(CMD/CTRL+SHIFT+P)->reload] for the 
 #### If you work on your repository with others...
 
 ... and would like these settings to be automatically applied for your teammates, also add the settings to the VSCode *workspace* settings and then check `.vscode/settings.json` into source control.
+
+#### Automating the regeneration of `compile_commands.json`
+
+There are VSCode plugins that allow to run commands whenever a file is being saved. One such extension is [Run on Save from emeraldwalk](https://github.com/emeraldwalk/vscode-runonsave).
+
+After installing the plugin add the following to your user `settings.json` file:
+
+```json
+{
+    "emeraldwalk.runonsave": {
+        "commands": [
+            {
+                "match": "(WORKSPACE|BUILD|.*[.]bzl|.*[.]bazel)$",
+                "isAsync": true,
+                "cmd": "bazel run @hedron_compile_commands//:refresh_all"
+            }
+        ]
+    }
+}
+```
+
+The above only triggers on Bazel's `WORKSPACE`, `BUILD` and other bazel files, as changes to the header files or dependencies require a change in those files.
 
 ### Other Editors
 
