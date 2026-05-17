@@ -54,16 +54,137 @@ def _bazel():
 
 
 def _threads():
-    """User-requested worker pool size, or the executor default if unset."""
+    """Worker pool size: --bcce-threads > macro `max_threads` > executor default.
+
+    Returning `None` lets ProcessPoolExecutor pick its own default
+    (os.cpu_count(), which becomes os.process_cpu_count() on Python 3.13+).
+    """
+    runtime = _get_last_arg('bcce-threads')
+    if runtime:
+        try:
+            n = int(runtime)
+            if n > 0:
+                return n
+        except ValueError:
+            pass
+        log_warning(f">>> Ignoring invalid --bcce-threads={runtime!r}; must be a positive integer.")
     user_max_threads = {max_threads}
-    # `None` lets ProcessPoolExecutor pick its own default (os.cpu_count(),
-    # which becomes os.process_cpu_count() on Python 3.13+).
     return user_max_threads if user_max_threads else None
+
+
+def _output_dir():
+    """Output directory: --bcce-output-dir > macro `output_dir` > workspace root."""
+    runtime = _get_last_arg('bcce-output-dir')
+    if runtime is not None:
+        return runtime
+    return {output_dir}
+
+
+def _exclude_headers():
+    """Header-exclusion mode: --bcce-exclude-headers > macro `exclude_headers`.
+
+    One of "all", "external", "" / None. Invalid values warn and fall through.
+    """
+    runtime = _get_last_arg('bcce-exclude-headers')
+    if runtime is not None:
+        if runtime in ("all", "external", "", "none"):
+            return "" if runtime == "none" else runtime
+        log_warning(f">>> Ignoring invalid --bcce-exclude-headers={runtime!r}; expected one of all|external|none.")
+    return {exclude_headers}
+
+
+@functools.lru_cache(maxsize=None)
+def _non_bcce_args():
+    """Returns `sys.argv[1:]` with all bcce args removed."""
+    return [arg for arg in sys.argv[1:] if not arg.startswith('--bcce-') and not arg.startswith('--nobcce')]
+
+
+@functools.lru_cache(maxsize=None)
+def _get_args(arg_name, is_bool=False):
+    """Return all values for `arg_name` in `sys.argv[1:]`."""
+    args = []
+    for arg in sys.argv[1:]:
+        if arg.startswith('--'+arg_name):
+            args.append(arg.lstrip('--' + arg_name).lstrip('='))
+        if is_bool and arg.startswith('--no' + arg_name):
+            args.append('no' + arg.lstrip('--no' + arg_name).lstrip('='))
+    return args
+
+
+@functools.lru_cache(maxsize=None)
+def _get_last_arg(arg_name, default=None, is_bool=False):
+    """Get last value for `arg_name` in `sys.argv[1:]`."""
+    args = _get_args(arg_name, is_bool)
+    return args[-1] if args else default
+
+
+@functools.lru_cache(maxsize=None)
+def _get_bool_arg(arg_name, default):
+    """Get the last value for `arg_name` in `sys.argv[1:]` as boolean or `default` value."""
+    value = _get_last_arg(arg_name, is_bool=True)
+    if value.lower() in ['', '1', 'yes']:
+        return True
+    if value.lower() in ['0', 'no']:
+        return False
+    return default
+
+
+@enum.unique
+class COLOR_MODE(enum.Enum):
+    COLOR_AUTO = -1
+    COLOR_NO = 0
+    COLOR_YES = 1
+
+
+# Automatically determine whether colors are supported.
+USE_COLOR=COLOR_MODE.COLOR_AUTO
+
+
+def _can_do_color() -> bool:
+    """Check --bcce-color and env vars for color mode."""
+    global USE_COLOR
+    if USE_COLOR == COLOR_MODE.COLOR_NO:
+        return False
+    if USE_COLOR == COLOR_MODE.COLOR_YES:
+        return True
+
+    if _get_last_arg('bcce-color', default='auto', is_bool=True) != 'auto':
+        if _get_bool_arg('bcce-color', True):
+            USE_COLOR=COLOR_MODE.COLOR_YES
+            return True
+        else:
+            USE_COLOR=COLOR_MODE.COLOR_NO
+            return False
+
+    # Check environment, see https://no-color.org
+    if "NO_COLOR" in os.environ:
+        if os.environ["NO_COLOR"] == "0":
+            USE_COLOR=COLOR_MODE.COLOR_YES
+            return True
+        else:
+            USE_COLOR=COLOR_MODE.COLOR_NO
+            return False
+    if (
+        hasattr(sys.stdout, "isatty")
+        and sys.stdout.isatty()
+        and os.environ.get("TERM") != "dumb"
+    ):
+        USE_COLOR=COLOR_MODE.COLOR_YES
+        return True
+    else:
+        USE_COLOR=COLOR_MODE.COLOR_NO
+        return False
 
 
 def _log_with_sgr(sgr, colored_message, uncolored_message=''):
     """Log a message to stderr wrapped in an SGR context."""
-    print(sgr.value, colored_message, SGR.RESET.value, uncolored_message, sep='', file=sys.stderr, flush=True)
+    if _can_do_color():
+        sgr_start = sgr.value
+        sgr_reset = SGR.RESET.value
+    else:
+        sgr_start = ''
+        sgr_reset = ''
+    print(sgr_start, colored_message, sgr_reset, uncolored_message, sep='', file=sys.stderr, flush=True)
 
 
 def log_error(colored_message, uncolored_message=''):
@@ -553,9 +674,9 @@ def _get_headers(compile_action, source_path: str):
     # As an alternative approach, you might consider trying to get the headers by inspecting the Middlemen actions in the aquery output, but I don't see a way to get just the ones actually #included--or an easy way to get the system headers--without invoking the preprocessor's header search logic.
         # For more on this, see https://github.com/hedronvision/bazel-compile-commands-extractor/issues/5#issuecomment-1031148373
 
-    if {exclude_headers} == "all":
+    if _exclude_headers() == "all":
         return set()
-    elif {exclude_headers} == "external" and not {exclude_external_sources} and compile_action.is_external:
+    elif _exclude_headers() == "external" and not {exclude_external_sources} and compile_action.is_external:
         # Shortcut - an external action can't include headers in the workspace (or, non-external headers)
         # The `not {exclude_external_sources}`` clause makes sure is_external was precomputed; there are no external actions if they've already been filtered in the process of excluding external sources.
         return set()
@@ -634,7 +755,7 @@ def _get_headers(compile_action, source_path: str):
         elif not headers and cached_headers: # If we failed to get headers, we'll fall back on a stale cache.
             headers = set(cached_headers)
 
-    if {exclude_headers} == "external":
+    if _exclude_headers() == "external":
         headers = {header for header in headers if _file_is_in_main_workspace_and_not_external(header)}
 
     return headers
@@ -789,6 +910,13 @@ def _get_apple_DEVELOPER_DIR():
     return subprocess.check_output(('xcode-select', '--print-path'), encoding=locale.getpreferredencoding()).rstrip()
     # Unless xcode-select has been invoked (like for a beta) we'd expect, e.g., '/Applications/Xcode.app/Contents/Developer' or '/Library/Developer/CommandLineTools'.
     # Traditionally stored in DEVELOPER_DIR environment variable, but not provided by Bazel. See https://github.com/bazelbuild/bazel/issues/12852
+
+
+def _manual_platform_patch(compile_args: typing.List[str]):
+    """Apply manual fixes to the compile args."""
+    compile_args[0] = _get_last_arg('bcce-compiler', compile_args[0])
+    compile_args += _get_args('bcce-copt')
+    return compile_args
 
 
 def _apple_platform_patch(compile_args: typing.List[str]):
@@ -1148,6 +1276,7 @@ def _get_cpp_command_for_files(compile_action):
     # Patch command by platform, revealing any hidden arguments.
     compile_action.arguments = _apple_platform_patch(compile_action.arguments)
     compile_action.arguments = _emscripten_platform_patch(compile_action)
+    compile_action.arguments = _manual_platform_patch(compile_action.arguments)
     # Android and Linux and grailbio LLVM toolchains: Fine as is; no special patching needed.
     compile_action.arguments = _all_platform_patch(compile_action.arguments)
 
@@ -1173,7 +1302,7 @@ def _convert_compile_commands(aquery_output):
     """
 
     # Tag actions as external if we're going to need to know that later.
-    if {exclude_headers} == "external" and not {exclude_external_sources}:
+    if _exclude_headers() == "external" and not {exclude_external_sources}:
         targets_by_id = {target.id : target.label for target in aquery_output.targets}
         for action in aquery_output.actions:
             # Tag action as external if it's created by an external target
@@ -1224,7 +1353,7 @@ def _get_commands(target: str, flags: str):
     # Log clear completion messages
     log_info(f">>> Analyzing commands used in {target}")
 
-    additional_flags = shlex.split(flags) + sys.argv[1:]
+    additional_flags = shlex.split(flags) + _non_bcce_args()
 
     # Detect anything that looks like a build target in the flags, and issue a warning.
     # Note that positional arguments after -- are all interpreted as target patterns. (If it's at the end, then no worries.)
@@ -1467,8 +1596,8 @@ def main():
     There should be actionable warnings, above, that led to this.""")
         sys.exit(1)
 
-    # Resolve the output path; `output_dir` is the macro parameter (empty == cwd).
-    output_path = os.path.join({output_dir}, 'compile_commands.json')
+    # Resolve the output path: `--bcce-output-dir` flag > macro `output_dir` > workspace root.
+    output_path = os.path.join(_output_dir(), 'compile_commands.json')
 
     # Remove any existing compile_commands.json before opening; handles the common
     # case where it's a symlink (e.g. pointing into a cmake build dir), which would
