@@ -67,6 +67,7 @@ def refresh_compile_commands(
         exclude_external_sources = False,
         bazel_command = "bazel",
         max_threads = None,
+        output_dir = "",
         **kwargs):  # For the other common attributes. Tags, compatible_with, etc. https://docs.bazel.build/versions/main/be/common-definitions.html#common-attributes.
     # Convert the various, acceptable target shorthands into the dictionary format
     # In Python, `type(x) == y` is an antipattern, but [Starlark doesn't support inheritance](https://bazel.build/rules/language), so `isinstance` doesn't exist, and this is the correct way to switch on type.
@@ -92,7 +93,7 @@ def refresh_compile_commands(
 
     # Generate the core, runnable python script from refresh.template.py
     script_name = name + ".py"
-    _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, bazel_command = bazel_command, max_threads = max_threads, **kwargs)
+    _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, bazel_command = bazel_command, max_threads = max_threads, output_dir = output_dir, **kwargs)
 
     # Combine them so the wrapper calls the main script.
     # Tag "manual" so `bazel build //...` won't try to build this when
@@ -127,6 +128,7 @@ def _expand_template_impl(ctx):
             "{exclude_external_sources}": repr(ctx.attr.exclude_external_sources),
             "{exclude_headers}": repr(ctx.attr.exclude_headers),
             "{max_threads}": repr(ctx.attr.max_threads if ctx.attr.max_threads > 0 else None),
+            "{output_dir}": repr(ctx.attr.output_dir),
             "{print_args_executable}": repr(ctx.executable._print_args_executable.path),
         },
     )
@@ -139,6 +141,7 @@ _expand_template = rule(
         "exclude_headers": attr.string(values = ["all", "external", ""]),  # "" needed only for compatibility with Bazel < 3.6.0
         "labels_to_flags": attr.string_dict(mandatory = True),  # string keys instead of label_keyed because Bazel doesn't support parsing wildcard target patterns (..., *, :all) in BUILD attributes.
         "max_threads": attr.int(default = 0),  # 0 means "use the historical default" inside refresh.template.py
+        "output_dir": attr.string(default = ""),  # Empty means: write to the workspace root (cwd, the historical behaviour).
         # For Windows INCLUDE. If this were eliminated, for example by the resolution of https://github.com/clangd/clangd/issues/123, we'd be able to just use a macro and skylib's expand_template rule: https://github.com/bazelbuild/bazel-skylib/pull/330
         # Once https://github.com/bazelbuild/bazel/pull/17108 is widely released, we should be able to eliminate this and get INCLUDE directly. Perhaps for 7.0? Should be released in the sucessor to 6.0
         "_cc_toolchain": attr.label(default = "@bazel_tools//tools/cpp:current_cc_toolchain"),
