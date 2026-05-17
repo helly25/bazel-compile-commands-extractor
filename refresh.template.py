@@ -269,6 +269,11 @@ def _get_headers_gcc(compile_action, source_path: str, action_key: str):
     header_cmd = (arg for arg in header_cmd
         if arg != '-o' and not arg.endswith(_get_headers.output_extensions))
 
+    # Strip -c flag: it is unused in dependency-generation (-M) mode and clang
+    # under -Werror,-Wunused-command-line-argument otherwise fails the run.
+    # https://github.com/hedronvision/bazel-compile-commands-extractor/issues/273
+    header_cmd = (arg for arg in header_cmd if arg != '-c')
+
     # Strip sanitizer ignore lists...so they don't show up in the dependency list.
     # See https://clang.llvm.org/docs/SanitizerSpecialCaseList.html and https://github.com/hedronvision/bazel-compile-commands-extractor/issues/34 for more context.
     header_cmd = (arg for arg in header_cmd

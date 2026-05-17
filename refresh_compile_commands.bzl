@@ -92,13 +92,21 @@ def refresh_compile_commands(
     script_name = name + ".py"
     _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, **kwargs)
 
-    # Combine them so the wrapper calls the main script
+    # Combine them so the wrapper calls the main script.
+    # Tag "manual" so `bazel build //...` won't try to build this when
+    # cross-compiling for a target platform whose toolchain can't build the
+    # Python wrapper. Users invoke this with `bazel run` anyway.
+    # See https://github.com/hedronvision/bazel-compile-commands-extractor/issues/255
+    tags = kwargs.pop("tags", [])
+    if "manual" not in tags:
+        tags = tags + ["manual"]
     py_binary(
         name = name,
         main = version_checker_script_name,
         srcs = [version_checker_script_name, script_name],
         data = ["@hedron_compile_commands//:print_args"],
         imports = [''], # Allows binary to import templated script, even if this macro is being called inside a sub package. See https://github.com/hedronvision/bazel-compile-commands-extractor/issues/137
+        tags = tags,
         **kwargs
     )
 
