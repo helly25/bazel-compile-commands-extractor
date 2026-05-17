@@ -1225,10 +1225,15 @@ def _get_commands(target: str, flags: str):
             # If https://github.com/clangd/clangd/issues/123 is resolved and we're not doing header extraction, we could try removing this, checking that there aren't erroneous red squigglies squigglies before the module maps are generated.
             # If Bazel starts supporting modules (https://github.com/bazelbuild/bazel/issues/4005), we'll probably need to make changes that subsume this.
         '--features=-layering_check',
+        # Disable the `parse_headers` action; it has a command line with no
+        # source files (just headers) and otherwise blows up `_get_files` with
+        # "No source files found in compile args". Whatever this would tell us
+        # is redundant with the header-extraction we do for the real action.
+        '--features=-parse_headers',
     ]
 
     if _get_bazel_version() >= (6, 1, 0):
-        aquery_args += ['--host_features=-compiler_param_file', '--host_features=-layering_check']
+        aquery_args += ['--host_features=-compiler_param_file', '--host_features=-layering_check', '--host_features=-parse_headers']
 
     aquery_args += additional_flags
 
