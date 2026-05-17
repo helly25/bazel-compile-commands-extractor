@@ -14,13 +14,28 @@
 >
 > [gdm]: https://www.linkedin.com/posts/hedronvision_hedron-vision-has-joined-google-deepmind-activity-7275631303255842818-yQw7
 
-**What is this project trying to do for me?**
+## What this is
 
-First, provide Bazel users cross-platform autocomplete for the C language family (C++, C, Objective-C, Objective-C++, and CUDA), and thereby make development more efficient and fun!
+A Bazel-aware extractor that produces a standard
+[`compile_commands.json`](https://clang.llvm.org/docs/JSONCompilationDatabase.html)
+describing every C-language-family compile action in your workspace. With
+that file in place, build-system-agnostic tooling — `clangd`,
+`clang-tidy`, IDE plugins — works the same as it would on a CMake or
+Make project.
 
-More generally, export Bazel build actions into the `compile_commands.json` format that enables great tooling decoupled from Bazel.
+Concretely, you get:
 
-## Usage Visuals
+- Cross-platform autocomplete, jump-to-definition, smart rename, and
+  live diagnostics for C, C++, Objective-C, Objective-C++, and CUDA via
+  `clangd`.
+- `clang-tidy` runs that reflect your real Bazel build commands.
+- Anything else that consumes the `compile_commands.json` spec.
+
+The commands are *de-Bazelized*: they can be run directly from the
+workspace root without any Bazel-specific environment or wrappers, which
+is what makes tools like `clangd` understand them.
+
+## Usage visuals
 
 ![Usage Animation](https://user-images.githubusercontent.com/7157583/142501309-862e89e2-02b4-4b61-950c-8b7e1bfd7eb7.gif)
 
@@ -28,38 +43,44 @@ More generally, export Bazel build actions into the `compile_commands.json` form
 
 ![clangd help example](https://user-images.githubusercontent.com/7157583/142502357-af9ba056-f9e0-47ce-b69d-57e85dcca458.png)
 
+## Requirements
+
+- **Bazel 6.0+**, with **Bazel 9 supported** (see [`FORK.md`](./FORK.md) for the Bazel 9 backport).
+- **Python 3.8+** on the host that runs the refresh.
+- **`clangd`** (latest recommended) for editor integration.
+- **OS:** Linux, macOS, and Windows are all in active use.
+
 ## Status
 
-Pretty great with only very minor rough edges. We use this every day and love it.
+Actively maintained as a fork. We use this tool ourselves daily and run
+it across Linux, macOS, and Windows. See [`FORK.md`](./FORK.md) for the
+backstory and the list of upstream PRs we landed in the first sweep,
+and [`LEGAL.md`](./LEGAL.md) for the licensing context.
 
-If there haven't been commits in a while, it's because of stability, not neglect. This is in daily use inside Hedron.
+## Quick start
 
-For everyday use, we'd recommend using this rather than the platform-specific IDE adapters (like Tulsi or the ASwB/CLion plugin to the extent it works), except the times when you need some platform-editor-specific feature (e.g. Apple's NextStep Interface Builder) that's not ever going to be supported in a cross-platform editor.
+If you have a small-to-medium Bazel project and just want autocomplete
+in your editor:
 
-### Outside Testimonials
+1. Add the dependency — one block in `MODULE.bazel` *or* `WORKSPACE`
+   (full snippets below).
+2. From your workspace root: `bazel run @hedron_compile_commands//:refresh_all`.
+3. Open your editor; `clangd` will pick up `compile_commands.json`
+   automatically.
 
-There are lots of people using this tool. That includes large companies and projects with tricky stacks, like in robotics.
+Re-run step 2 whenever you change `BUILD`/`BUILD.bazel`/`*.bzl` files.
 
-We're including a couple of things they've said. We hope they'll give you enough confidence to give this tool a try, too!
+For larger or more configured projects, see [Run the extractor](#run-the-extractor) below.
 
-> "Thanks for an awesome tool! Super easy to set up and use."
-— a robotics engineer at Boston Dynamics
+---
 
-> "Thank you for showing so much rigor in what would otherwise be just some uninteresting tooling project. This definitely feels like a passing the baton/torch moment. My best wishes for everything you do in life."
-— author of the previous best tool of this type
+## Setup
 
-## Usage
+> Basic setup time: ~10 minutes including the editor configuration.
 
-> Basic Setup Time: 10m
+### Add this tool to your Bazel setup
 
-Howdy, Bazel user 🤠. Let's get you set up fast with some awesome tooling for the C language family.
-
-There's a bunch of text here but only because we're trying to spell things out and make them easy. If you have issues, let us know; we'd love your help making things even better and more complete—and we'd love to help you!
-
-### First, add this tool to your Bazel setup.
-
-#### If you have a MODULE.bazel file and are using the new [bzlmod](https://bazel.build/external/migration) system
-Copy this into your `MODULE.bazel`, making sure to update to the [latest commit](https://github.com/helly25/bazel-compile-commands-extractor/commits/main) per the instructions below.
+#### bzlmod (`MODULE.bazel`) — recommended
 
 ```Starlark
 # Bazel Compile Commands Extractor (helly25 fork; see FORK.md for context)
@@ -69,35 +90,33 @@ git_override(
     module_name = "hedron_compile_commands",
     remote = "https://github.com/helly25/bazel-compile-commands-extractor.git",
     commit = "0e990032f3c5a866e72615cf67e5ce22186dcb97",
-    # Replace the commit hash (above) with the latest (https://github.com/helly25/bazel-compile-commands-extractor/commits/main).
-    # Even better, set up Renovate and let it do the work for you (see "Suggestion: Updates" in the README).
+    # Replace the commit hash with the latest from
+    # https://github.com/helly25/bazel-compile-commands-extractor/commits/main
+    # (or set up Renovate; see below).
 )
 ```
 
-#### If you're using the traditional WORKSPACE system
+#### Traditional `WORKSPACE`
 
-Copy this into the top of your Bazel `WORKSPACE` file, making sure to update to the [latest commit](https://github.com/helly25/bazel-compile-commands-extractor/commits/main) per the instructions below. Putting it at the top will prevent other tools from clobbering any of its dependencies with old versions; we promise to keep ours dependency versions up-to-date.
+Put this near the top of your `WORKSPACE` to prevent other tools from
+clobbering its dependencies with older versions:
 
 ```Starlark
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
 
-# Bazel 9 removed the native `py_binary` and `cc_binary` rules, so users on the
-# WORKSPACE system must explicitly bring in `rules_python` and `rules_cc`.
-# If you already depend on these via other rules in your WORKSPACE, you can omit
-# this block; bzlmod (MODULE.bazel) users do not need it because the deps are
-# declared in `bazel_dep()` calls inside this module.
+# Bazel 9 removed the native `py_binary` and `cc_binary` rules, so WORKSPACE
+# users must bring in `rules_python` and `rules_cc` explicitly. If you
+# already depend on these via other rules, you can omit this block.
+# bzlmod (MODULE.bazel) users do not need this; the deps are declared in
+# `bazel_dep()` calls inside this module.
 http_archive(
     name = "rules_python",
-    # Replace the version below with the latest release from
-    # https://github.com/bazelbuild/rules_python/releases.
     url = "https://github.com/bazelbuild/rules_python/releases/download/2.0.1/rules_python-2.0.1.tar.gz",
-    # sha256 = "...",  # The first run will print the canonical sha256 to use here.
+    # sha256 = "...",  # First run will print the canonical sha256 to use here.
 )
 http_archive(
     name = "rules_cc",
-    # Replace the version below with the latest release from
-    # https://github.com/bazelbuild/rules_cc/releases.
     url = "https://github.com/bazelbuild/rules_cc/releases/download/0.2.18/rules_cc-0.2.18.tar.gz",
     # sha256 = "...",
 )
@@ -106,13 +125,13 @@ http_archive(
 # Bazel Compile Commands Extractor (helly25 fork; see FORK.md for context)
 # https://github.com/helly25/bazel-compile-commands-extractor
 http_archive(
-    name = "hedron_compile_commands",  # Bazel external repo name kept for backwards compat with existing consumers.
-
-    # Replace the commit hash (0e990032f3c5a866e72615cf67e5ce22186dcb97) in both places (below) with the latest (https://github.com/helly25/bazel-compile-commands-extractor/commits/main), rather than using the stale one here.
-    # Even better, set up Renovate and let it do the work for you (see "Suggestion: Updates" in the README).
+    name = "hedron_compile_commands",  # external repo name kept for backwards compat
     url = "https://github.com/helly25/bazel-compile-commands-extractor/archive/0e990032f3c5a866e72615cf67e5ce22186dcb97.tar.gz",
     strip_prefix = "bazel-compile-commands-extractor-0e990032f3c5a866e72615cf67e5ce22186dcb97",
-    # When you first run this tool, it'll recommend a sha256 hash to put here with a message like: "DEBUG: Rule 'hedron_compile_commands' indicated that a canonical reproducible form can be obtained by modifying arguments sha256 = ..."
+    # Replace the commit hash with the latest from
+    # https://github.com/helly25/bazel-compile-commands-extractor/commits/main
+    # (or set up Renovate; see below).
+    # The first run prints a canonical sha256 to fill in here.
 )
 load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
 hedron_compile_commands_setup()
@@ -124,45 +143,50 @@ load("@hedron_compile_commands//:workspace_setup_transitive_transitive_transitiv
 hedron_compile_commands_setup_transitive_transitive_transitive()
 ```
 
-#### Either way: Get Updates via Renovate
+#### Stay up-to-date with Renovate
 
-Improvements come frequently, so we'd recommend keeping up-to-date.
+We live at head — the latest `main` commit is the one you want. We
+recommend [Renovate](https://github.com/renovatebot/renovate) (or
+similar) to bump the pinned commit automatically. See Renovate's docs
+for setup; the bazel `git_override` / `http_archive` shapes above are
+both standard, supported patterns.
 
-We'd strongly recommend you set up [Renovate](https://github.com/renovatebot/renovate) (or similar) at some point to keep this dependency (and others) up-to-date by default. [We aren't affiliated with Renovate or anything, but we think it's awesome. It watches for new versions and sends you PRs for review or automated testing. It's free and easy to set up. It's been astoundingly useful in our codebase, and we've worked with the wonderful maintainer to make things great for Bazel use. And it's used in official Bazel repositories.] Here's a [Renovate configuration example from one of our projects](https://github.com/hedronvision/bazel-cc-filesystem-backport/blob/main/renovate.json5), in the hope that it might save you time.
+### Run the extractor
 
-If not now, maybe come back to this step later, or watch this repo for updates. [Or hey, maybe give us a quick star, while you're thinking about watching.] Like Abseil, we live at head; the latest commit to the main branch is the commit you want. So don't rely on release notifications; use [Renovate](https://github.com/renovatebot/renovate) or poll manually for new commits.
+The extractor produces `compile_commands.json` in your workspace root.
+Re-run it whenever you change `BUILD`/`BUILD.bazel`/`*.bzl` files;
+`clangd` will pick up the new commands automatically.
 
-### Second, get the extractor running.
+> You must use `bazel run`, not `bazel build`; the tool executes a
+> Python script that shells out to `bazel aquery`.
 
-We'll generate a `compile_commands.json` file in the root of the Bazel workspace.
+Pick the path that matches your project:
 
-That file describes how Bazel is compiling all the (Objective-)C(++) or CUDA files. With the compile commands in a common format, build-system-independent tooling (e.g. `clangd` autocomplete, `clang-tidy` linting etc.), can get to work.
+#### Path 1 — Simple codebase, no extra flags
 
-We'll get it running and then move onto the next section while it whirrs away. But in the future, every time you want tooling (like autocomplete) to see new `BUILD`-file changes, rerun the command you chose below! Clangd will automatically pick up the changes.
+```shell
+bazel run @hedron_compile_commands//:refresh_all
+```
 
-#### There are four common paths:
+#### Path 2 — Your everyday builds need extra flags
 
-##### 1. Have a relatively simple codebase, where every target builds without needing any additional configuration or flags beyond what's in .bazelrc?
+If you typically build with `--config=…` or `--compilation_mode=…`, the
+extractor needs the same flags so it can see the build accurately.
+Append them after `--`:
 
-In that case, just `bazel run @hedron_compile_commands//:refresh_all`
+```shell
+bazel run @hedron_compile_commands//:refresh_all -- --config=my_flags --compilation_mode=dbg
+```
 
-Note: you have to `bazel run` this tool, not just `bazel build` it.
+The `--` separator is required; it routes the flags to the extractor's
+`bazel aquery`, not to the outer `bazel run`.
 
-##### 2. Are there Bazel flags, e.g., `--config=my_important_flags_or_toolchains --compilation_mode=dbg`, that you apply manually apply to all your builds while developing?
+#### Path 3 — Specific targets, or per-target flags
 
-It's fairly important that you supply those same Bazel flags when running this tool, too, so we can accurately understand the build, where files are being generated, etc.
-
-Append, e.g. `-- --config=my_important_flags_or_toolchains --compilation_mode=dbg` to the above, or whatever flags you normally build with while developing.
-
-Note: the extra `--` is not a typo, and functions to pass the flags to this tool when it runs rather than when it builds. Your command should look like:
-
-`bazel run @hedron_compile_commands//:refresh_all -- --config=my_important_flags_or_toolchains --compilation_mode=dbg`
-
-##### 3. Often, though, you'll want to specify the top-level, output targets you care about and/or what flags they individually need. This avoids issues where some targets can't be built on their own; they need configuration on the command line or by a parent rule. An example of the latter is an android_library, which probably cannot be built independently of the android_binary that configures it.
-
-In that case, you can easily specify the top-level, output targets you're working on and the flags needed to build them.
-
-Open a `BUILD` file—we'd recommend using (or creating) `//BUILD`—and add something like:
+Useful when some targets can't be built standalone (e.g. an
+`android_library` configured by an `android_binary`), or when different
+targets need different flags. Add this to a `BUILD` file in your
+workspace (we recommend `//BUILD`):
 
 ```Starlark
 load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
@@ -170,113 +194,162 @@ load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile
 refresh_compile_commands(
     name = "refresh_compile_commands",
 
-    # Specify the targets of interest.
-    # For example, specify a dict of targets and any flags required to build.
+    # Targets you actively work on. Flags already in `.bazelrc` are
+    # picked up automatically.
     targets = {
-      "//:my_output_1": "--important_flag1 --important_flag2=true",
-      "//:my_output_2": "",
+        "//:my_output_1": "--important_flag1 --important_flag2=true",
+        "//:my_output_2": "",
     },
-    # No need to add flags already in .bazelrc. They're automatically picked up.
-    # If you don't need flags, a list of targets is also okay, as is a single target string.
-    # Wildcard patterns, like //... for everything, *are* allowed here, just like a build.
-      # As are additional targets (+) and subtractions (-), like in bazel query https://docs.bazel.build/versions/main/query.html#expressions
-    # And if you're working on a header-only library, specify a test or binary target that compiles it.
+    # A list of targets is fine if you don't need per-target flags.
+    # A single string is fine for one target. Wildcards (`//...`) work,
+    # as do `+` / `-` set expressions (see `bazel query`).
+    # For a header-only library, pass a test or binary that compiles it.
 )
 ```
 
-(For more details on `refresh_compile_commands`, look at the docs at the top of [`refresh_compile_commands.bzl`](./refresh_compile_commands.bzl)).
+Then:
 
-Finally, you'll need to `bazel run :refresh_compile_commands`
+```shell
+bazel run :refresh_compile_commands
+```
 
-##### 4. Using `ccls` or another tool that, unlike `clangd`, doesn't want or need headers in `compile_commands.json`?
+For all `refresh_compile_commands` options, see the macro docs at the
+top of [`refresh_compile_commands.bzl`](./refresh_compile_commands.bzl).
 
-Similar to the above, we'll use `refresh_compile_commands` for configuration, but instead of setting `targets`, set `exclude_headers = "all"`.
+#### Path 4 — `ccls` or other consumers that don't want headers
 
-### If you've got a very large project and `compile_commands.json` is taking a while to generate:
+Same as Path 3, but set `exclude_headers = "all"` on the macro target.
 
-Adding `exclude_external_sources = True` and `exclude_headers = "external"` can help, with some tradeoffs.
+### Large projects: speeding things up
 
-For now, we'd suggest continuing on to set up `clangd` (below). Thereafter, if you your project proves to be large enough that it stretches the capacity of `clangd` and/or this tool to index quickly, take a look at the docs at the top of [`refresh_compile_commands.bzl`](./refresh_compile_commands.bzl) for instructions on how to tune those flags and others.
+If `compile_commands.json` generation gets slow, the following macro
+parameters trade completeness for speed:
 
-### Customizing the `compile_commands.json` generation
+- `exclude_external_sources = True` — skip compile entries for external
+  workspaces entirely.
+- `exclude_headers = "external"` — keep main-workspace headers, drop
+  external/system headers.
 
-The tool has a few parameters that control output generation:
+Get the basic setup working first, then tune. Details in
+[`refresh_compile_commands.bzl`](./refresh_compile_commands.bzl).
 
-* `--bcce-color[=`_auto_`]` — Enable or disable colored output. Useful for environments where the color codes are not handled (e.g. the VSCode OUTPUT window). With the default `auto`, the environment is consulted (both [`NO_COLOR`](https://no-color.org) and `TERM`). To force off, use `0`/`no`, or pass `--nobcce-color`. To force on, use `1`/`yes`.
-* `--bcce-compiler[=`_compiler_`]` — Override the detected compiler. Useful if the compiler found in the editor environment is different from the one that should appear in `compile_commands.json`. May interfere with cross-compilation. If the goal is to retarget `clangd`, the [clangd compileflags](https://clangd.llvm.org/config#compileflags) config can do this on the `clangd` side instead.
-* `--bcce-copt[=`_option_`]` — Pass an additional `option` to every arg list in `compile_commands.json` (can be repeated). As above, you can also do this on the `clangd` side via compileflags.
-* `--bcce-threads[=`_N_`]` — Override the worker-pool size for one run. Falls back to the macro `max_threads`, then the executor default (`os.cpu_count()`).
-* `--bcce-output-dir[=`_dir_`]` — Override the directory `compile_commands.json` is written to. Falls back to the macro `output_dir`, then the workspace root.
-* `--bcce-exclude-headers=`_all_`|`_external_`|`_none_ — Override the `exclude_headers` macro parameter for a single run. `all` skips header extraction entirely (fastest), `external` keeps only main-workspace headers, `none` (or empty) restores the macro default.
+### Runtime flags (`--bcce-*`)
 
-As with options passed through to `bazel aquery`, these flags must be separated from the bazel invocation by `--`. For example, to suppress colored output:
+Pass any of these after `--` on `bazel run`. They override the
+corresponding macro parameter for a single run. Precedence:
+**runtime flag > macro param > default**.
 
-`bazel run @hedron_compile_commands//:refresh_all -- --bcce-color=no`.
+| Flag | Effect |
+|---|---|
+| `--bcce-color=auto\|yes\|no` (or `--nobcce-color`) | Colored output. `auto` consults TTY + `NO_COLOR` / `TERM`. |
+| `--bcce-compiler=<path>` | Override the detected compiler. |
+| `--bcce-copt=<flag>` | Append an extra option to every compile command (repeatable). |
+| `--bcce-threads=<N>` | Worker-pool size for one run. |
+| `--bcce-output-dir=<dir>` | Write `compile_commands.json` into a different directory. |
+| `--bcce-exclude-headers=all\|external\|none` | Override `exclude_headers`. `none` (or empty) restores the macro default. |
 
-#### Why isn't there a `--bcce-bazel` runtime flag?
+Notes:
 
-The `bazel_command` macro parameter (added by [#12](https://github.com/helly25/bazel-compile-commands-extractor/pull/12), which backports [hedronvision#215](https://github.com/hedronvision/bazel-compile-commands-extractor/pull/215)) is intentionally **macro-only**, with no `--bcce-bazel` runtime equivalent. The reasoning:
+- **`--bcce-compiler`** and **`--bcce-copt`** can also be configured on
+  the `clangd` side via [compileflags](https://clangd.llvm.org/config#compileflags).
+  Use whichever fits your workflow.
+- **`--bcce-color`** is helpful where the consuming terminal doesn't
+  handle ANSI (the VSCode OUTPUT panel, for example).
 
-- Bazel version selection is already handled by [bazelisk](https://github.com/bazelbuild/bazelisk) + `.bazelversion`; an extractor-level override would only muddy that contract.
-- The script is invoked via `bazel run`, so the outer Bazel is already fixed at invocation time. Adding a runtime flag that controls which `bazel` the extractor's *inner* subprocesses (`bazel version`, `bazel aquery`, `bazel dump --action_cache`) shell out to invites confusion about which binary actually ran.
-- The macro param already covers the legitimate cases (wrapper scripts, alternative binary names in CI sandboxes); a per-run override would be redundant.
+Example — suppress colored output:
 
-If you have a use case that needs a runtime override here, please open an issue with the specifics.
+```shell
+bazel run @hedron_compile_commands//:refresh_all -- --bcce-color=no
+```
 
-**Reversing this decision later.** If a strong use case appears (e.g. a subprocess `PATH` sanitization issue or a wrapper that needs bypassing in a single run), the change is small and additive:
+<details>
+<summary>Why isn't there a <code>--bcce-bazel</code> runtime flag?</summary>
 
-1. In `refresh.template.py`, change `_bazel()` from a pure template-substitution `return {bazel_command}` to consult `_get_last_arg('bcce-bazel')` first, mirroring `_threads()` / `_output_dir()` / `_exclude_headers()`.
-2. Document `--bcce-bazel=<path>` in the runtime-flags list above.
-3. No `.bzl` changes are required; the macro `bazel_command` param continues to act as the fallback.
+The `bazel_command` macro parameter (added by
+[#12](https://github.com/helly25/bazel-compile-commands-extractor/pull/12),
+which backports
+[hedronvision#215](https://github.com/hedronvision/bazel-compile-commands-extractor/pull/215))
+is intentionally **macro-only**, with no `--bcce-bazel` runtime
+equivalent:
 
-The deliberate omission is recorded both here and as a comment next to the `bazel_command` macro parameter in [`refresh_compile_commands.bzl`](./refresh_compile_commands.bzl).
+- Bazel version selection is already handled by
+  [bazelisk](https://github.com/bazelbuild/bazelisk) + `.bazelversion`;
+  an extractor-level override would only muddy that contract.
+- The script is invoked via `bazel run`, so the outer Bazel is already
+  fixed at invocation time. A runtime flag that controls which `bazel`
+  the extractor's *inner* subprocesses (`bazel version`, `bazel aquery`,
+  `bazel dump --action_cache`) shell out to invites confusion about
+  which binary actually ran.
+- The macro param already covers the legitimate cases (wrapper scripts,
+  alternative binary names in CI sandboxes).
 
+If you hit a use case that needs a runtime override here, please open
+an issue. Reversing this decision is small and additive: in
+`refresh.template.py`, change `_bazel()` to consult
+`_get_last_arg('bcce-bazel')` first (mirroring `_threads()` /
+`_output_dir()` / `_exclude_headers()`); document the flag in the table
+above; no `.bzl` changes needed. The deliberate omission is also
+recorded as a comment next to `bazel_command` in
+[`refresh_compile_commands.bzl`](./refresh_compile_commands.bzl).
 
-## Editor Setup — for autocomplete based on `compile_commands.json`
+</details>
 
+---
+
+## Editor setup
 
 ### VSCode
 
-Let's get `clangd`'s extension installed and configured.
+Install the `clangd` extension and make sure Microsoft's C++ extension
+isn't interfering:
 
-```Shell
+```shell
 code --install-extension llvm-vs-code-extensions.vscode-clangd
-# We also need make sure that Microsoft's C++ extension is not involved and interfering.
 code --uninstall-extension ms-vscode.cpptools
 ```
 
-Then, open VSCode *user* settings, so things will be automatically set up for all projects you open.
+Open VSCode **user** settings, search for `clangd`, and add these three
+entries to `clangd.arguments`:
 
-Search for "clangd".
-
-Add the following three separate entries to `"clangd.arguments"`:
-```Shell
+```text
 --header-insertion=never
 --compile-commands-dir=${workspaceFolder}/
 --query-driver=**
 ```
-(Just copy each as written; VSCode will correctly expand `${workspaceFolder}` for each workspace.)
-  -  They get rid of (overzealous) header insertion; locate the compile commands correctly, even when browsing system headers outside the source tree; and cause `clangd` to interrogate Bazel's compiler wrappers to figure out which system headers are included by default.
-  -  If your Bazel `WORKSPACE` is a subdirectory of your project, change `--compile-commands-dir` to point into that subdirectory by overriding the flags in your *workspace* settings. You'll need to re-specify all the flags when you override, because the workspace settings replace all the flags in the user settings.
 
-<!-- At least until https://github.com/clangd/vscode-clangd/issues/138 is resolved. -->
-Turn on: Clangd: Check Updates
-  -  You always want the latest! New great features and fixes are always getting added to clangd.
-  -  We'll assume you always have the latest and aren't using an old version nor Apple's `clangd` intended for Xcode. While we can and do make great efforts to workaround issues in the current version of `clangd`, we remove those workarounds when `clangd` fixes them upstream. This keeps the code simple and development velocity fast!
+What they do:
 
-If turning on automatic updates doesn't prompt you to download the actual `clangd` server binary, hit (CMD/CTRL+SHIFT+P)->Download language Server.
+- `--header-insertion=never` turns off (often-overzealous) auto header
+  inserts.
+- `--compile-commands-dir=${workspaceFolder}/` keeps `clangd` finding
+  the commands even when you're browsing system headers outside the
+  source tree.
+- `--query-driver=**` lets `clangd` interrogate Bazel's compiler
+  wrappers to discover their default include paths.
 
-You may need to subsequently reload VSCode [(CMD/CTRL+SHIFT+P)->reload] for the plugin to load. The `clangd` download should prompt you to do so when it completes.
+If your `WORKSPACE` is in a subdirectory of the VSCode project, override
+`--compile-commands-dir` in your **workspace** settings to point at
+that subdirectory. (Workspace settings replace user settings here, so
+re-specify all three flags when you override.)
 
-#### If you work on your repository with others...
+Enable **Clangd: Check Updates** and prefer the latest `clangd`. We
+remove workarounds as `clangd` upstream fixes the underlying issues, so
+running an old `clangd` (including the Apple Xcode build) will
+gradually drift out of compatibility.
 
-... and would like these settings to be automatically applied for your teammates, also add the settings to the VSCode *workspace* settings and then check `.vscode/settings.json` into source control.
+If `clangd` doesn't prompt you to download the server binary, run
+`Cmd/Ctrl+Shift+P → Download language server`. You may need to reload
+the window once it finishes.
 
-#### Automating the regeneration of `compile_commands.json`
+#### Share settings with your team
 
-There are VSCode plugins that allow to run commands whenever a file is being saved. One such extension is [Run on Save from emeraldwalk](https://github.com/emeraldwalk/vscode-runonsave).
+Add the same settings to your VSCode **workspace** settings and check
+`.vscode/settings.json` into source control.
 
-After installing the plugin add the following to your user `settings.json` file:
+#### Auto-refresh `compile_commands.json` on save
+
+The [Run on Save](https://github.com/emeraldwalk/vscode-runonsave)
+extension can re-run the extractor whenever a Bazel file changes:
 
 ```json
 {
@@ -292,49 +365,62 @@ After installing the plugin add the following to your user `settings.json` file:
 }
 ```
 
-The above only triggers on Bazel's `WORKSPACE`, `BUILD` and other bazel files, as changes to the header files or dependencies require a change in those files.
+You only need to refresh on Bazel-file changes — `clangd` re-reads
+`compile_commands.json` automatically.
 
-### Other Editors
+### Other editors
 
-If you're using another editor, you'll need to follow the same rough steps as above: [get the latest version of clangd set up to extend the editor](https://clangd.llvm.org/installation.html#editor-plugins) and then supply the same flags as VSCode. We know people have had an easy time setting up this tool with other editors, like Emacs and Vim+YouCompleteMe(YCM), for example.
-
-Once you've succeeded in setting up another editor—or set up `clang-tidy`, or otherwise seen anything that might improve this readme—we'd love it if you'd give back and contribute what you know! Just edit this `README.md` on GitHub and file a PR :)
-
-## "Smooth Edges" — what we've enjoyed using this for
-
-You should now be all set to go! Way to make it through setup.
-
-There should be a `compile_commands.json` file in the root of your workspace, enabling your editor to provide great, clang-based autocomplete. And you should know what target to `bazel run` to refresh that autocomplete, when you make `BUILD`-file changes big enough to require a refresh.
-
-Behind the scenes, that `compile_commands.json` file contains entries describing all the commands used to build every source file in your project. And, for now, there's also one entry per header, describing one way it is compiled. (This gets you great autocomplete in header files, too, so you don't have to think about [`clangd`'s biggest rough edge](https://github.com/clangd/clangd/issues/123)). Crucially, all these commands have been sufficiently de-Bazeled for clang tooling (or you!) to understand them.
-
-### Here's what you should be expecting, based on our experience:
-
-We use this tool every day to develop a cross-platform library for iOS and Android on macOS. Expect Android completion in Android source, macOS in macOS, iOS in iOS, etc. People use it on Linux/Ubuntu and Windows, too.
-
-All the usual clangd features should work. CMD/CTRL+click navigation (or option if you've changed keybindings), smart rename, autocomplete, highlighting etc. Everything you expect in an IDE should be there (because most good IDEs are backed by `clangd`). As a general principle: If you're choosing tooling that needs to understand a programming language, you want it to be based on a compiler frontend for that language, which clangd does as part of the LLVM/clang project.
-
-Everything should also work for generated files, though you may have to run a build for the generated file to exist. If you're using this with remote execution or cache, you'll likely have to use `--remote_download_regex` to pull down the header and source files and to avoid errors in-editor, now that build without the bytes (`--remote_download_toplevel`) is the Bazel default. If you work through this, we'd love it if you'd give back and file a PR adding good instructions for everyone else --or at least share what you've learned in an issue. You'll also want to pull down *.d dependency files on non-Windows; they let us find headers much faster when they're available as a cache. We'd appreciate if you'd also check to make sure that they're pulled down even without (`--noexperimental_inmemory_dotd_files`). Thanks for helping!
-
-## Rough Edges
-
-Otherwise, we've self-filed issues for the rough edges we know about and are tracking. We'd love to hear from you there about what you're seeing, good and bad. Please add things if you find more rough edges, and let us know if you need help or more features.
-
-On the other hand, if you've set things up and they're working well, we'd still love to hear from you. Please file a "non-issue" in the issues tab describing your success! We'd love to hear what you're working on, what platforms you're using, and what you're finding most useful. And maybe also toss a star our way so we know it was helpful to you.
-
-We'd also love to work with you on contributions and improvements, of course! Development setup is easy, not onerous; we've got [a great doc to guide you quickly into being able to make the changes you need.](./ImplementationReadme.md) The codebase is super clean and friendly. Stepping into the code is a fun and efficient way to get the improvements you want.
+The general recipe is the same: install
+[a recent `clangd`](https://clangd.llvm.org/installation.html#editor-plugins)
+for your editor and pass it the three flags above
+(`--header-insertion=never`, `--compile-commands-dir=…`,
+`--query-driver=**`). Folks have reported successful setups with Emacs,
+Vim/Neovim with YouCompleteMe or coc, and JetBrains IDEs. PRs
+documenting the exact configuration for another editor are welcome.
 
 ---
 
-## Other Projects Likely Of Interest
+## What works well
 
-If you're using Bazel for the C language family, you'll likely also want some of our other tooling, like...
+- Cross-platform development out of the box: in our daily use we get
+  Android completion in Android source, macOS in macOS, iOS in iOS,
+  etc. Linux and Windows users have similar reports.
+- All the usual `clangd` features: navigation (`Cmd/Ctrl`-click or
+  `option`-click), smart rename, autocomplete, diagnostics, highlights.
+- Generated files work too, **provided** the file actually exists on
+  disk. With a remote-cache / remote-execution setup you'll likely need
+  `--remote_download_regex` (and/or `--remote_download_outputs`) to
+  pull headers and source files locally — "build without the bytes" is
+  Bazel's default now and clangd needs the bytes.
+- `.d` dependency files speed up header discovery significantly when
+  they're cached locally. On non-Windows, double-check that they're
+  being downloaded; passing `--noexperimental_inmemory_dotd_files` will
+  force them to disk if you need to.
 
-1. A good way of making secure network requests: [hedronvision/bazel-make-cc-https-easy](https://github.com/hedronvision/bazel-make-cc-https-easy)
-2. A way to use std::filesystem across platforms: [hedronvision/bazel-cc-filesystem-backport](https://github.com/hedronvision/bazel-cc-filesystem-backport)
+If you make these patterns work for a setup we haven't documented, a
+short PR or issue update is very welcome.
+
+## Known limitations
+
+The biggest known rough edges are tracked in the
+[issue tracker](https://github.com/helly25/bazel-compile-commands-extractor/issues).
+Please add to it when you find new ones, and let us know if you need
+help or an additional feature.
+
+If you've set things up and it's working well, we'd also love to hear
+about it (a quick issue, a star, or a PR documenting your editor
+configuration all help future users find the tool).
 
 ---
-*Looking for implementation details instead? Want to dive into the codebase?*
-See [ImplementationReadme.md](./ImplementationReadme.md).
 
-*Bazel/Blaze maintainer reading this?* If you'd be interested in integrating this into official Bazel tools, let us know in an issue or email, and let's talk! We love getting to use Bazel and would love to help.
+## Contributing
+
+Development setup is straightforward — see
+[`ImplementationReadme.md`](./ImplementationReadme.md). The codebase is
+small and friendly; jumping in is an efficient way to get whatever
+improvement you need landed.
+
+If you spot a fix that should also live upstream
+(hedronvision/bazel-compile-commands-extractor), please cross-link your
+PR there as well; we keep the lineage visible (see
+[`FORK.md`](./FORK.md#how-we-did-the-sweep)).

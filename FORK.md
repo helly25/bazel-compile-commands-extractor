@@ -187,6 +187,27 @@ home of those features — `main` is.
 
 ---
 
+## Historical testimonials (from the original project)
+
+Reproduced here as historical record. These quotes appeared in the
+original `README.md` of the upstream
+[hedronvision/bazel-compile-commands-extractor][upstream] repository and
+predate this fork. They speak to the original Hedron-era tool, not to
+the fork.
+
+> "Thanks for an awesome tool! Super easy to set up and use."
+>
+> — a robotics engineer at Boston Dynamics
+
+> "Thank you for showing so much rigor in what would otherwise be just
+> some uninteresting tooling project. This definitely feels like a
+> passing the baton/torch moment. My best wishes for everything you
+> do in life."
+>
+> — author of the previous best tool of this type
+
+---
+
 [upstream]: https://github.com/hedronvision/bazel-compile-commands-extractor
 [fork]: https://github.com/helly25/bazel-compile-commands-extractor
 [hedron-linkedin]: https://www.linkedin.com/posts/hedronvision_hedron-vision-has-joined-google-deepmind-activity-7275631303255842818-yQw7
