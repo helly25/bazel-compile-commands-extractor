@@ -1467,16 +1467,19 @@ def main():
     There should be actionable warnings, above, that led to this.""")
         sys.exit(1)
 
+    # Resolve the output path; `output_dir` is the macro parameter (empty == cwd).
+    output_path = os.path.join({output_dir}, 'compile_commands.json')
+
     # Remove any existing compile_commands.json before opening; handles the common
     # case where it's a symlink (e.g. pointing into a cmake build dir), which would
     # otherwise produce an inscrutable open() error. https://github.com/hedronvision/bazel-compile-commands-extractor/issues/105
     try:
-        os.remove('compile_commands.json')
+        os.remove(output_path)
     except FileNotFoundError:
         pass
 
     # Chain output into compile_commands.json
-    with open('compile_commands.json', 'w') as output_file:
+    with open(output_path, 'w') as output_file:
         json.dump(
             compile_command_entries,
             output_file,
