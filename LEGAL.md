@@ -207,18 +207,62 @@ via [@cpsauer on GitHub][cpsauer-gh] or LinkedIn.
 
 ## Outreach
 
-We will (or have) reach(ed) out to Hedron Vision Inc. and to
-Christopher Sauer to:
+### Prior contact (April 2025)
 
-1. let them know the fork exists and why;
-2. offer to coordinate / hand the work back if upstream maintenance
-   resumes;
-3. ask whether they would be open to relicensing the project under a
-   permissive OSI-approved license (e.g. MIT or Apache-2.0), which
-   would resolve the licence-vs-fork tension entirely.
+On **2025-04-18**, helly25 (Marcus Boerger) emailed Christopher Sauer
+at `christophersauer@pacbell.net` asking whether the long-pending
+header-only fix ([upstream #219][upstream-pr-219]) could be merged,
+and floating alternatives including ownership transfer, adding a
+co-maintainer, or a permissive relicence. A second mail on the same
+day pointed at the rebased [upstream #209][upstream-pr-209].
 
-The outcome of that outreach will be summarised here once we have a
-response (or a definitive non-response window).
+Christopher replied on **2025-04-24** ("Hey, Marcus!") saying the
+Google-side approvals were close and the team "should be able to
+transfer into google and merge in super soon", apologising for the
+slowness. helly25 acknowledged the same day.
+
+In the thirteen months since, no transfer, merge, or relicence has
+happened publicly. The upstream repository continued to receive only
+pre-commit autoupdates. The open-PR backlog kept growing. Bazel 9
+(April 2026) removed the native `py_binary` / `cc_binary` rules,
+breaking the tool out of the box for stock Bazel 9 users
+([upstream issue #279][upstream-issue-279]).
+
+### Follow-up (May 2026)
+
+On **2026-05-17 at 14:35 BST**, helly25 sent a follow-up email
+continuing the same thread (recipient `christophersauer@pacbell.net`),
+recapping the situation, pointing at this fork and at this `LEGAL.md`,
+and asking for one of:
+
+1. resumed upstream maintenance,
+2. a permissive relicence (MIT or Apache-2.0) of the upstream
+   repository,
+3. an explicit "no objection to the fork continuing while upstream
+   is inactive,"
+4. or any other direction (transfer back, archive, wind down).
+
+A parallel LinkedIn DM (helly25 and Christopher Sauer are first-degree
+connections) was sent immediately afterwards pointing at the email,
+in case the pacbell address has gone fallow.
+
+### Reassessment
+
+If no response has arrived by **2026-06-17** (about one month after
+the follow-up), we will revisit our posture. "Revisit" here means a
+status check, not a change of position; the fork continues to operate
+per the [goal statement](#goal) and we will engage in good faith with
+any direction Hedron Vision Inc. provides whenever it arrives.
+
+Any decision to read continued silence as implicit non-objection
+(rather than ongoing non-response) requires a substantially longer
+window: at least one full quarter, so no earlier than
+**2026-08-17**. We may reassess again periodically thereafter as the
+upstream situation evolves.
+
+### Outcomes
+
+(no responses logged yet)
 
 ---
 
@@ -247,3 +291,7 @@ public statements available at the time of writing
 [cpsauer-cb]: https://www.crunchbase.com/person/chris-sauer-0a97
 [cpsauer-gh]: https://github.com/cpsauer
 [gdm-gh]: https://github.com/google-deepmind
+
+[upstream-pr-209]: https://github.com/hedronvision/bazel-compile-commands-extractor/pull/209
+[upstream-pr-219]: https://github.com/hedronvision/bazel-compile-commands-extractor/pull/219
+[upstream-issue-279]: https://github.com/hedronvision/bazel-compile-commands-extractor/issues/279
