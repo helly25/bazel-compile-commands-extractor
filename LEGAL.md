@@ -181,7 +181,7 @@ Until the situation changes:
 
 ---
 
-## What happens if Hedron reasserts stewardship
+## What happens when Hedron reasserts stewardship
 
 If [Hedron Vision Inc.][hedron-co], anyone authorised to act on its
 behalf, or anyone reasonably claiming successor-in-interest contacts us
@@ -230,35 +230,23 @@ breaking the tool out of the box for stock Bazel 9 users
 
 ### Follow-up (May 2026)
 
-On **2026-05-17 at 14:35 BST**, helly25 sent a follow-up email
-continuing the same thread (recipient `christophersauer@pacbell.net`),
-recapping the situation, pointing at this fork and at this `LEGAL.md`,
-and asking for one of:
+On **2026-05-17 at 14:35 BST**, a follow-up email was sent recapping the
+situation and outlining options for a permanent resolution (resumed upstream
+maintenance, relicensing, or explicit direction).
 
-1. resumed upstream maintenance,
-2. a permissive relicence (MIT or Apache-2.0) of the upstream
-   repository,
-3. an explicit "no objection to the fork continuing while upstream
-   is inactive,"
-4. or any other direction (transfer back, archive, wind down).
-
-A parallel LinkedIn DM (helly25 and Christopher Sauer are first-degree
-connections) was sent immediately afterwards pointing at the email,
-in case the pacbell address has gone fallow.
+On **2026-05-17 at 23:58 BST**, Christopher Sauer responded,
+confirming active receipt and expressing full support for the work being done
+here to keep the tool working for the community. He noted that personal
+circumstances will keep him away from active maintenance for quite some time,
+but confirmed his intent to work together to make the integration official when
+he returns.
 
 ### Reassessment
 
-If no response has arrived by **2026-06-17** (about one month after
-the follow-up), we will revisit our posture. "Revisit" here means a
-status check, not a change of position; the fork continues to operate
-per the [goal statement](#goal) and we will engage in good faith with
-any direction Hedron Vision Inc. provides whenever it arrives.
-
-Any decision to read continued silence as implicit non-objection
-(rather than ongoing non-response) requires a substantially longer
-window: at least one full quarter, so no earlier than
-**2026-08-17**. We may reassess again periodically thereafter as the
-upstream situation evolves.
+A constructive dialogue is now actively underway. For the moment, this fork will
+remain active to support the community, but under restricted maintenance. Due to
+current compliance constraints, this repository has limited ability to take on
+external contributions until a permanent upstream resolution is finalized.
 
 ### Outcomes
 
