@@ -1,5 +1,13 @@
 # Contributing to bazel-compile-commands-extractor (helly25 fork)
 
+> **Restricted maintenance (as of 2026-05).** Following recent contact
+> with the upstream copyright holder
+> (see [`LEGAL.md`](./LEGAL.md#outreach)), the maintainer's current
+> compliance situation means external contributions may be limited,
+> deferred, or unable to be accepted until a permanent upstream
+> resolution lands. Please **open an issue first** to discuss before
+> investing time in a PR. Bug reports remain very welcome.
+
 Thanks for considering a contribution. This document is short on purpose;
 please read all of it before opening a pull request.
 
