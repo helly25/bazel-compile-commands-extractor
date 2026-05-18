@@ -415,10 +415,21 @@ configuration all help future users find the tool).
 
 ## Contributing
 
-Development setup is straightforward — see
-[`ImplementationReadme.md`](./ImplementationReadme.md). The codebase is
-small and friendly; jumping in is an efficient way to get whatever
-improvement you need landed.
+> **Note (2026-05): restricted maintenance.** Following recent contact
+> with the upstream copyright holder
+> (see [`LEGAL.md`](./LEGAL.md#outreach)), this fork is operating under
+> **restricted maintenance** while a permanent upstream resolution is
+> being worked out. Compliance constraints on the maintainer mean
+> external contributions may be limited, deferred, or unable to be
+> accepted until that resolution lands. Please open an issue first to
+> discuss before investing time in a PR. Bug reports remain very
+> welcome.
+
+Development setup is straightforward; see
+[`ImplementationReadme.md`](./ImplementationReadme.md) and
+[`CONTRIBUTING.md`](./CONTRIBUTING.md) (the latter covers the DCO
+sign-off and signed-commit requirements that apply to any PR we are
+able to accept). The codebase is small and friendly.
 
 If you spot a fix that should also live upstream
 (hedronvision/bazel-compile-commands-extractor), please cross-link your
