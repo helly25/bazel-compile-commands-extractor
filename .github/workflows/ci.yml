@@ -1,0 +1,65 @@
+# SPDX-FileCopyrightText: Copyright (c) The helly25 authors (helly25.com)
+# SPDX-License-Identifier: Apache-2.0
+#
+# Multi-OS smoke test: `bazel run //:refresh_all` extracts compile commands for
+# this repo's own `print_args` cc_binary. That exercises the ProcessPoolExecutor
+# worker path in refresh.template.py, which is the part that differs by platform:
+# the start method is `fork` on Linux but `spawn` on macOS (Python 3.8+), and a
+# `spawn` worker re-imports the entry point and re-enters main(). This job guards
+# against that regression (BrokenProcessPool / "An attempt has been made to start
+# a new process before the current process has finished its bootstrapping phase").
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  refresh-all:
+    name: refresh_all (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # macOS defaults multiprocessing to `spawn`; Linux to `fork`. We test
+        # both so the fork/spawn divergence can never silently regress again.
+        # Windows is intentionally omitted: it only offers `spawn`, which this
+        # tool's Bazel-bootstrapped entry point does not currently support.
+        os: [ubuntu-latest, macos-latest]
+    env:
+      USE_BAZEL_VERSION: "9.1.1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-${{ matrix.os }}
+          repository-cache: true
+
+      - name: Extract compile commands
+        run: bazel run //:refresh_all
+
+      - name: Verify compile_commands.json
+        shell: bash
+        run: |
+          test -s compile_commands.json
+          python3 - <<'PY'
+          import json
+          with open("compile_commands.json") as f:
+              entries = json.load(f)
+          assert isinstance(entries, list) and entries, "compile_commands.json has no entries"
+          assert any("print_args" in e.get("file", "") for e in entries), \
+              "expected a compile command for print_args.cpp"
+          print(f"OK: {len(entries)} entr{'y' if len(entries) == 1 else 'ies'}")
+          PY
