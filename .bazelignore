@@ -1,0 +1,4 @@
+# The integration test is a self-contained nested Bazel module; the outer
+# workspace must not descend into it (it is built/tested on its own, see
+# tests/integration/ and .github/workflows/ci.yml).
+tests/integration
