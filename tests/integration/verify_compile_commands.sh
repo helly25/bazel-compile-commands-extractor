@@ -7,7 +7,7 @@
 #   Default path: ./compile_commands.json -- where `bazel run :refresh` writes
 #   it (the module root).
 #
-# Kept POSIX/bash-3.2 compatible so it runs on stock macOS bash.
+# Kept bash 3.2+ compatible so it runs on stock macOS bash.
 set -euo pipefail
 
 cdb="${1:-compile_commands.json}"
@@ -26,10 +26,10 @@ fi
 # Files we expect the extractor to have emitted entries for: the binary source,
 # the library source, the test source, and the library header (pulled in via the
 # extractor's header support).
-expected="greeter.cc main.cc greeter_test.cc greeter.h"
+expected=(greeter.cc greeter_main.cc greeter_test.cc greeter.h)
 
 status=0
-for want in ${expected}; do
+for want in "${expected[@]}"; do
   # Match on basename so we don't depend on absolute/relative path layout.
   if jq -e --arg f "${want}" 'any(.[]; (.file | split("/") | last) == $f)' "${cdb}" >/dev/null; then
     echo "OK: ${want} present"

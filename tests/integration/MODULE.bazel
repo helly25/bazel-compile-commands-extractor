@@ -4,8 +4,11 @@
 # README.md: build a cc_library / cc_binary / cc_test, then `bazel run :refresh`
 # to generate compile_commands.json.
 #
-# This project only targets Bazel 9.1+ (see .bazelversion); it freely uses
-# Bazel 9 conventions such as `rules_shell` for the bash test.
+# Works on Bazel 8.x and 9.x; `.bazelversion` pins the version used for local
+# development, while CI additionally exercises the latest patch of each
+# supported major. The bash test uses `rules_shell` rather than native
+# `sh_test`, so it keeps working on Bazel 9 (where the native rule was removed)
+# as well as on 8.x.
 module(
     name = "hedron_compile_commands_integration_test",
     version = "0.0.0",

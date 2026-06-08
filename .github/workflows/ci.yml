@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   refresh-all:
-    name: refresh_all (${{ matrix.os }})
+    name: refresh_all (${{ matrix.os }}, bazel ${{ matrix.bazel }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -33,15 +33,26 @@ jobs:
         # Windows is intentionally omitted: it only offers `spawn`, which this
         # tool's Bazel-bootstrapped entry point does not currently support.
         os: [ubuntu-latest, macos-latest]
+        # Latest patch of each supported major, so the extractor is exercised
+        # against this repo's own code on every Bazel version we claim to
+        # support. bazelisk has no "latest 8.x" wildcard -- bump as patches ship.
+        bazel: [8.7.0, 9.0.2, 9.1.1]
     env:
-      USE_BAZEL_VERSION: 9.1.1
+      USE_BAZEL_VERSION: ${{ matrix.bazel }}
     steps:
       - uses: actions/checkout@v4
+
+      # Pin the version in the file too, not only via USE_BAZEL_VERSION, so the
+      # nested `bazel` calls the extractor spawns (aquery/cquery) can't fall back
+      # to a different version if the env var ever fails to reach a subprocess.
+      # The two mechanisms are set from the same matrix value and so agree.
+      - name: Pin Bazel version
+        run: echo "${{ matrix.bazel }}" > .bazelversion
 
       - uses: bazel-contrib/setup-bazel@0.15.0
         with:
           bazelisk-cache: true
-          disk-cache: ${{ github.workflow }}-${{ matrix.os }}
+          disk-cache: ${{ github.workflow }}-${{ matrix.os }}-${{ matrix.bazel }}
           repository-cache: true
 
       - name: Extract compile commands
@@ -65,33 +76,66 @@ jobs:
   # it: a self-contained Bazel module (tests/integration/) depends on this repo
   # via local_path_override, builds a cc_library/cc_binary/cc_test plus a bash
   # test, then `bazel run :refresh` generates compile_commands.json which we
-  # verify lists the expected files. Bazel 9.1+ only (see .bazelversion).
+  # verify lists the expected files. Runs across the latest patch of each
+  # supported Bazel major (see the `bazel` matrix below); the module works on
+  # 8.x and 9.x alike.
   integration:
-    name: integration (${{ matrix.os }})
+    name: integration (${{ matrix.os }}, bazel ${{ matrix.bazel }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
+        # Latest patch of each supported major. bazelisk has no "latest 8.x"
+        # wildcard, so versions are pinned explicitly -- bump as patches ship.
+        bazel: [8.7.0, 9.0.2, 9.1.1]
     env:
-      USE_BAZEL_VERSION: 9.1.1
+      USE_BAZEL_VERSION: ${{ matrix.bazel }}
     defaults:
       run:
         working-directory: tests/integration
     steps:
       - uses: actions/checkout@v4
 
+      # Pinned in the file as well as via USE_BAZEL_VERSION (same matrix value),
+      # so the extractor's nested `bazel` calls use the version under test even
+      # if the env var fails to propagate. Writes tests/integration/.bazelversion
+      # because of this job's working-directory default.
+      - name: Pin Bazel version
+        run: echo "${{ matrix.bazel }}" > .bazelversion
+
       - uses: bazel-contrib/setup-bazel@0.15.0
         with:
           bazelisk-cache: true
-          disk-cache: ${{ github.workflow }}-integration-${{ matrix.os }}
+          disk-cache: ${{ github.workflow }}-integration-${{ matrix.os }}-${{ matrix.bazel }}
           repository-cache: true
 
       - name: Build and run cc_library / cc_binary / cc_test / bash test
         run: bazel test //... --test_output=errors
 
       - name: Generate compile_commands.json
-        run: bazel run //:refresh
+        # Delete any stale copy first so the verify step can only succeed
+        # against output this run actually produced (guards a false green where
+        # refresh emits nothing but a leftover file still satisfies verify).
+        run: |
+          rm -f compile_commands.json
+          bazel run //:refresh
 
       - name: Verify expected files in compile_commands.json
         run: ./verify_compile_commands.sh
+
+  # Single, stable status check for branch protection. The matrix job names
+  # ("refresh_all (ubuntu-latest)", etc.) change whenever the OS list changes,
+  # so requiring each one individually is brittle. This gate aggregates them:
+  # require only "CI done" and it stays correct as the matrix grows or shrinks.
+  # `if: always()` makes it run even when a dependency fails or is cancelled
+  # (without it, a failed dependency would skip the gate, which reads as green).
+  ci-done:
+    name: CI done
+    if: always()
+    needs: [refresh-all, integration]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any dependency did not succeed
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1

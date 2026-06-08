@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # System test: run the cc_binary through Bazel runfiles and assert it prints the
 # expected greeting. The binary's runfiles path is passed as $1, expanded from
-# $(rlocationpath :app) in the BUILD file.
+# $(rlocationpath :greeter) in the BUILD file.
 set -o pipefail
 
 # --- begin runfiles.bash initialization v3 ---

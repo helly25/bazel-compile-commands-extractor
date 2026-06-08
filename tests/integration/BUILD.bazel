@@ -5,16 +5,16 @@ load("@rules_shell//shell:sh_test.bzl", "sh_test")
 # A tiny library so the extractor has a real cc_library compile action to emit,
 # plus a header (greeter.h) for it to resolve.
 cc_library(
-    name = "greeter",
+    name = "greeter_lib",
     srcs = ["greeter.cc"],
     hdrs = ["greeter.h"],
 )
 
 # The binary just prints the greeting so the bash test below can assert on it.
 cc_binary(
-    name = "app",
-    srcs = ["main.cc"],
-    deps = [":greeter"],
+    name = "greeter",
+    srcs = ["greeter_main.cc"],
+    deps = [":greeter_lib"],
 )
 
 # A plain cc_test that exercises the library directly (no external test
@@ -22,16 +22,16 @@ cc_binary(
 cc_test(
     name = "greeter_test",
     srcs = ["greeter_test.cc"],
-    deps = [":greeter"],
+    deps = [":greeter_lib"],
 )
 
 # Bash-based system test: run the cc_binary and verify it prints the expected
-# string. The binary is resolved through Bazel runfiles ($(rlocationpath :app)).
+# string. The binary is resolved through Bazel runfiles ($(rlocationpath :greeter)).
 sh_test(
     name = "binary_output_test",
     srcs = ["binary_output_test.sh"],
-    args = ["$(rlocationpath :app)"],
-    data = [":app"],
+    args = ["$(rlocationpath :greeter)"],
+    data = [":greeter"],
     deps = ["@bazel_tools//tools/bash/runfiles"],
 )
 
@@ -41,8 +41,8 @@ sh_test(
 refresh_compile_commands(
     name = "refresh",
     targets = [
+        "//:greeter_lib",
         "//:greeter",
-        "//:app",
         "//:greeter_test",
     ],
 )
