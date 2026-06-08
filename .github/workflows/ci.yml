@@ -1,6 +1,3 @@
-# SPDX-FileCopyrightText: Copyright (c) The helly25 authors (helly25.com)
-# SPDX-License-Identifier: Apache-2.0
-#
 # Multi-OS smoke test: `bazel run //:refresh_all` extracts compile commands for
 # this repo's own `print_args` cc_binary. That exercises the ProcessPoolExecutor
 # worker path in refresh.template.py, which is the part that differs by platform:
@@ -37,7 +34,7 @@ jobs:
         # tool's Bazel-bootstrapped entry point does not currently support.
         os: [ubuntu-latest, macos-latest]
     env:
-      USE_BAZEL_VERSION: "9.1.1"
+      USE_BAZEL_VERSION: 9.1.1
     steps:
       - uses: actions/checkout@v4
 
@@ -63,3 +60,38 @@ jobs:
               "expected a compile command for print_args.cpp"
           print(f"OK: {len(entries)} entr{'y' if len(entries) == 1 else 'ies'}")
           PY
+
+  # End-to-end system test of the extractor as a downstream consumer would use
+  # it: a self-contained Bazel module (tests/integration/) depends on this repo
+  # via local_path_override, builds a cc_library/cc_binary/cc_test plus a bash
+  # test, then `bazel run :refresh` generates compile_commands.json which we
+  # verify lists the expected files. Bazel 9.1+ only (see .bazelversion).
+  integration:
+    name: integration (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    env:
+      USE_BAZEL_VERSION: 9.1.1
+    defaults:
+      run:
+        working-directory: tests/integration
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-integration-${{ matrix.os }}
+          repository-cache: true
+
+      - name: Build and run cc_library / cc_binary / cc_test / bash test
+        run: bazel test //... --test_output=errors
+
+      - name: Generate compile_commands.json
+        run: bazel run //:refresh
+
+      - name: Verify expected files in compile_commands.json
+        run: ./verify_compile_commands.sh

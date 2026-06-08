@@ -1,0 +1,24 @@
+# Self-contained Bazel module used as a micro system-integration test for the
+# compile-commands extractor in the repository root. It depends on the extractor
+# via `local_path_override` and exercises the full consumer flow documented in
+# README.md: build a cc_library / cc_binary / cc_test, then `bazel run :refresh`
+# to generate compile_commands.json.
+#
+# This project only targets Bazel 9.1+ (see .bazelversion); it freely uses
+# Bazel 9 conventions such as `rules_shell` for the bash test.
+module(
+    name = "hedron_compile_commands_integration_test",
+    version = "0.0.0",
+)
+
+bazel_dep(name = "rules_cc", version = "0.2.18")
+bazel_dep(name = "rules_shell", version = "0.6.1")
+
+# The extractor under test. The module name is kept as "hedron_compile_commands"
+# for backwards compatibility with existing consumers (see README.md / FORK.md).
+# `local_path_override` points at the repository root, two levels up.
+bazel_dep(name = "hedron_compile_commands", version = "0.0.0")
+local_path_override(
+    module_name = "hedron_compile_commands",
+    path = "../..",
+)
