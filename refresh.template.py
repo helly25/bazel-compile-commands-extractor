@@ -24,6 +24,7 @@ import functools  # MIN_PY=3.9: Replace `functools.lru_cache(maxsize=None)` with
 import itertools
 import json
 import locale
+import multiprocessing
 import os
 import pathlib
 import re
@@ -70,6 +71,25 @@ def _threads():
         log_warning(f">>> Ignoring invalid --bcce-threads={runtime!r}; must be a positive integer.")
     user_max_threads = {max_threads}
     return user_max_threads if user_max_threads else None
+
+
+def _mp_context():
+    """Start-method context for the worker pool; prefer `fork` where available.
+
+    ProcessPoolExecutor re-imports the entry-point module in every worker when
+    the start method is `spawn` (the default on macOS since Python 3.8, and the
+    only option on Windows). Bazel runs this tool's entry point as `__main__`
+    via a bootstrap that always sets run_name="__main__", so that re-import
+    re-enters main() and aborts with a BrokenProcessPool ("An attempt has been
+    made to start a new process before the current process has finished its
+    bootstrapping phase"). `fork` inherits the already-running interpreter
+    instead of re-importing, sidestepping the issue, so prefer it wherever the
+    platform offers it (Linux always; macOS opts out of it by default). Fall
+    back to the platform default elsewhere (e.g. Windows).
+    """
+    if 'fork' in multiprocessing.get_all_start_methods():
+        return multiprocessing.get_context('fork')
+    return None
 
 
 def _output_dir():
@@ -1317,7 +1337,8 @@ def _convert_compile_commands(aquery_output):
     # was measured ~6x faster upstream. See
     # https://github.com/hedronvision/bazel-compile-commands-extractor/pull/250
     with concurrent.futures.ProcessPoolExecutor(
-        max_workers=_threads()
+        max_workers=_threads(),
+        mp_context=_mp_context(),
     ) as threadpool:
         outputs = threadpool.map(_get_cpp_command_for_files, aquery_output.actions)
 
