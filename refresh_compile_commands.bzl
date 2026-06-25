@@ -47,6 +47,10 @@ refresh_compile_commands(
     # If you don't care about browsing headers from external workspaces or system headers, except for a CTRL/CMD+click every now and then:
         # Then no need to add entries for their headers, because clangd will correctly infer from the CTRL/CMD+click (but not a quick open or reopen).
         # exclude_headers = "external",
+    # On Bazel 9, header extraction lost a fast path: `bazel dump --action_cache` no longer exposes action keys, so the tool can't confirm Bazel's cached `.d` dependency files are current and re-runs the preprocessor for every source. See https://github.com/helly25/bazel-compile-commands-extractor/issues/23
+        # If you'd rather trust those `.d` files (reusing them based on mtime alone), set:
+        # trust_bazel_dep_files = True,
+        # ^ Restores the fast path. Tradeoff: if you change compile flags that change which headers are included but don't rebuild, you may get slightly stale headers until the next build. Off by default to keep results exact.
     # Still not fast enough?
         # Make sure you're specifying just the targets you care about by setting `targets`, above.
 ```
@@ -65,6 +69,7 @@ def refresh_compile_commands(
         targets = None,
         exclude_headers = None,
         exclude_external_sources = False,
+        trust_bazel_dep_files = False,
         # Macro-only by design; there is no `--bcce-bazel` runtime counterpart.
         # See "Why isn't there a `--bcce-bazel` runtime flag?" in README.md.
         bazel_command = "bazel",
@@ -95,7 +100,7 @@ def refresh_compile_commands(
 
     # Generate the core, runnable python script from refresh.template.py
     script_name = name + ".py"
-    _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, bazel_command = bazel_command, max_threads = max_threads, output_dir = output_dir, **kwargs)
+    _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, trust_bazel_dep_files = trust_bazel_dep_files, bazel_command = bazel_command, max_threads = max_threads, output_dir = output_dir, **kwargs)
 
     # Combine them so the wrapper calls the main script.
     # Tag "manual" so `bazel build //...` won't try to build this when
@@ -132,6 +137,7 @@ def _expand_template_impl(ctx):
             "{max_threads}": repr(ctx.attr.max_threads if ctx.attr.max_threads > 0 else None),
             "{output_dir}": repr(ctx.attr.output_dir),
             "{print_args_executable}": repr(ctx.executable._print_args_executable.path),
+            "{trust_bazel_dep_files}": repr(ctx.attr.trust_bazel_dep_files),
         },
     )
     return DefaultInfo(files = depset([script]))
@@ -144,6 +150,7 @@ _expand_template = rule(
         "labels_to_flags": attr.string_dict(mandatory = True),  # string keys instead of label_keyed because Bazel doesn't support parsing wildcard target patterns (..., *, :all) in BUILD attributes.
         "max_threads": attr.int(default = 0),  # 0 means "use the historical default" inside refresh.template.py
         "output_dir": attr.string(default = ""),  # Empty means: write to the workspace root (cwd, the historical behaviour).
+        "trust_bazel_dep_files": attr.bool(default = False),  # Reuse Bazel's `.d` files via mtime alone, skipping the action-cache guard that's unavailable on Bazel >= 9. See issue #23.
         # For Windows INCLUDE. If this were eliminated, for example by the resolution of https://github.com/clangd/clangd/issues/123, we'd be able to just use a macro and skylib's expand_template rule: https://github.com/bazelbuild/bazel-skylib/pull/330
         # Once https://github.com/bazelbuild/bazel/pull/17108 is widely released, we should be able to eliminate this and get INCLUDE directly. Perhaps for 7.0? Should be released in the sucessor to 6.0
         "_cc_toolchain": attr.label(default = "@bazel_tools//tools/cpp:current_cc_toolchain"),

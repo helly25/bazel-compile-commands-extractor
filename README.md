@@ -247,6 +247,7 @@ corresponding macro parameter for a single run. Precedence:
 | `--bcce-threads=<N>` | Worker-pool size for one run. |
 | `--bcce-output-dir=<dir>` | Write `compile_commands.json` into a different directory. |
 | `--bcce-exclude-headers=all\|external\|none` | Override `exclude_headers`. `none` (or empty) restores the macro default. |
+| `--bcce-trust-bazel-dep-files` (or `--nobcce-trust-bazel-dep-files`) | Reuse Bazel's `.d` dependency files based on mtime alone, restoring the header-extraction fast path on Bazel 9. Override `trust_bazel_dep_files`. |
 
 Notes:
 
@@ -255,6 +256,14 @@ Notes:
   Use whichever fits your workflow.
 - **`--bcce-color`** is helpful where the consuming terminal doesn't
   handle ANSI (the VSCode OUTPUT panel, for example).
+- **`--bcce-trust-bazel-dep-files`** is a Bazel 9 speedup. On Bazel 9,
+  `bazel dump --action_cache` no longer exposes action keys
+  ([#23](https://github.com/helly25/bazel-compile-commands-extractor/issues/23)),
+  so the tool can't confirm Bazel's cached `.d` files are current and falls
+  back to re-running the preprocessor for every source. Opting in trusts those
+  `.d` files on mtime alone. The tradeoff: if you change compile flags that
+  change which headers are included but don't rebuild, you may get slightly
+  stale headers until the next build.
 
 Example — suppress colored output:
 
