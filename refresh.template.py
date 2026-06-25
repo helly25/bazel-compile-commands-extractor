@@ -113,6 +113,18 @@ def _exclude_headers():
     return {exclude_headers}
 
 
+def _trust_bazel_dep_files():
+    """Whether to reuse Bazel's `.d` dependency files based on mtime alone: --bcce-trust-bazel-dep-files > macro `trust_bazel_dep_files`.
+
+    Normally we only reuse Bazel's generated `.d` files when the action is present in Bazel's action cache (see _get_bazel_cached_action_keys), which confirms the `.d` was produced by--and matches the command line of--the action we're currently looking at.
+    That guard is impossible on Bazel >= 9, where `bazel dump --action_cache` no longer exposes actionKeys, so the header-extraction fast path never fires there and every source is (re)preprocessed. See https://github.com/helly25/bazel-compile-commands-extractor/issues/23
+    Opting in reuses the `.d` files based on the mtime freshness check alone, restoring the fast path. Tradeoff: if you change compile flags that change which headers are included but don't rebuild, you may read slightly stale headers until the next build.
+    """
+    if _get_last_arg('bcce-trust-bazel-dep-files', default='auto', is_bool=True) != 'auto':
+        return _get_bool_arg('bcce-trust-bazel-dep-files', default={trust_bazel_dep_files})
+    return {trust_bazel_dep_files}
+
+
 @functools.lru_cache(maxsize=None)
 def _non_bcce_args():
     """Returns `sys.argv[1:]` with all bcce args removed."""
@@ -283,6 +295,16 @@ def _get_bazel_version():
 @functools.lru_cache(maxsize=None)
 def _get_bazel_cached_action_keys():
     """Gets the set of actionKeys cached in bazel-out."""
+    # Bazel 9 dropped actionKey from `bazel dump --action_cache`; an entry now stores only a
+    # digest (a hash combining the action key, client env, and input digests) that aquery doesn't
+    # expose, so there's nothing left for us to match against. See https://github.com/helly25/bazel-compile-commands-extractor/issues/23
+    # We therefore skip the dump entirely on Bazel >= 9, where it would otherwise print megabytes
+    # of unusable output per worker process and (previously) spam a "Failed to get action keys"
+    # warning once per process. Losing this fast path only means we re-run the preprocessor to find
+    # headers rather than reusing Bazel's cached .d files; the resulting compile commands stay correct.
+    if _get_bazel_version() >= (9, 0, 0):
+        return set()
+
     action_cache_process = subprocess.run(
         [_bazel(), 'dump', '--action_cache'],
         # MIN_PY=3.7: Replace PIPEs with capture_output.
@@ -394,7 +416,8 @@ def _get_headers_gcc(compile_action, source_path: str, action_key: str):
     # Flags reference here: https://clang.llvm.org/docs/ClangCommandLineReference.html
 
     # Check to see if Bazel has an (approximately) fresh cache of the included headers, and if so, use them to avoid a slow preprocessing step.
-    if action_key in _get_bazel_cached_action_keys():  # Safe because Bazel only holds one cached action key per path, and the key contains the path.
+    # The action-cache membership check is unavailable on Bazel >= 9 (see _get_bazel_cached_action_keys), so --bcce-trust-bazel-dep-files lets users restore this fast path by trusting the mtime freshness check below alone.
+    if _trust_bazel_dep_files() or action_key in _get_bazel_cached_action_keys():  # Safe because Bazel only holds one cached action key per path, and the key contains the path.
         for i, arg in enumerate(compile_action.arguments):
             if arg.startswith('-MF'):
                 if len(arg) > 3: # Either appended, like -MF<file>
