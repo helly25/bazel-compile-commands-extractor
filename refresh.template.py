@@ -1368,7 +1368,7 @@ def _convert_compile_commands(aquery_output):
         executor_kwargs = {'max_workers': _threads()}
     else:
         Executor = concurrent.futures.ProcessPoolExecutor
-        executor_kwargs = {'max_workers': _threads(), 'mp_context': _mp_context()}
+        executor_kwargs = {'max_workers': _threads(), 'mp_context': mp_context}
 
     with Executor(**executor_kwargs) as pool:
         outputs = pool.map(_get_cpp_command_for_files, aquery_output.actions)
