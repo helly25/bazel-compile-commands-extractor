@@ -8,6 +8,54 @@ cc_library(
     name = "greeter_lib",
     srcs = ["greeter.cc"],
     hdrs = ["greeter.h"],
+    # Also linked into the `generator` tool below, so shared.cc gets compiled in
+    # both the target and the exec configuration -- the duplicate that
+    # --bcce-prefer-target-config collapses.
+    deps = [":shared_lib"],
+)
+
+cc_library(
+    name = "shared_lib",
+    srcs = ["shared.cc"],
+    hdrs = ["shared.h"],
+)
+
+# Reachable only through the `generator` tool, hence compiled only in the exec
+# configuration. --bcce-prefer-target-config must NOT drop it.
+cc_library(
+    name = "toolonly_lib",
+    srcs = ["toolonly.cc"],
+    hdrs = ["toolonly.h"],
+)
+
+cc_binary(
+    name = "generator",
+    srcs = ["generator.cc"],
+    deps = [
+        ":shared_lib",
+        ":toolonly_lib",
+    ],
+)
+
+# Using `generator` under `tools` is what forces it (and its deps) into the exec
+# configuration.
+genrule(
+    name = "gen_header",
+    outs = ["generated.h"],
+    cmd = "$(location :generator) > $@",
+    tools = [":generator"],
+)
+
+cc_library(
+    name = "uses_generated",
+    srcs = ["uses_generated.cc"],
+    hdrs = [
+        "uses_generated.h",
+        ":gen_header",
+    ],
+    # Target-configuration user of shared_lib; pairs with the exec-configuration
+    # use via :generator above.
+    deps = [":shared_lib"],
 )
 
 # The binary just prints the greeting so the bash test below can assert on it.
@@ -44,5 +92,9 @@ refresh_compile_commands(
         "//:greeter_lib",
         "//:greeter",
         "//:greeter_test",
+        # Drags in the genrule -> generator tool, so the extractor sees
+        # exec-configuration compile actions alongside the target-configuration
+        # ones. Needed by the --bcce-prefer-target-config coverage.
+        "//:uses_generated",
     ],
 )

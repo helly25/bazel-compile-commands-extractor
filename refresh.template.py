@@ -125,6 +125,21 @@ def _trust_bazel_dep_files():
     return {trust_bazel_dep_files}
 
 
+def _prefer_target_config():
+    """Whether to drop exec-configuration commands for files that also compile in the target configuration: --bcce-prefer-target-config.
+
+    Bazel compiles a source twice when it is reachable both normally and as part of a tool that runs on the build machine (a code generator, say): once in the target configuration and once in the exec configuration. Both commands land in compile_commands.json, describing the same file, differing only in build flags.
+    That is faithful -- it really is compiled both ways -- but for consumers that do work per entry (clang-tidy especially, but also clangd indexing) the second copy is duplicate work for a near-identical result.
+    Opting in keeps only the target-configuration command for such files. Files that compile ONLY in the exec configuration keep their exec command: those are tools and tool-only headers, and dropping them would remove them from the compile DB entirely.
+    Scope note: this applies within each analyzed target (one aquery), matching how header deduplication already works. With several target/flags pairs configured, a file seen in the target configuration under one pair and the exec configuration under another keeps both -- the common single-`//...` setup is unaffected.
+    Runtime-only, and off by default, since the default contract is to describe every way a file is compiled.
+    """
+    # Sentinel-guard the lookup: _get_bool_arg assumes the flag is present (it .lower()s the value), so only call it once we know it was passed.
+    if _get_last_arg('bcce-prefer-target-config', default='auto', is_bool=True) == 'auto':
+        return False
+    return _get_bool_arg('bcce-prefer-target-config', default=False)
+
+
 @functools.lru_cache(maxsize=None)
 def _non_bcce_args():
     """Returns `sys.argv[1:]` with all bcce args removed."""
@@ -1334,6 +1349,64 @@ def _get_cpp_command_for_files(compile_action):
     return source_files, header_files, compile_action.arguments
 
 
+def _is_exec_configuration(configuration):
+    """Whether an aquery configuration record describes the exec (build-machine tool) configuration."""
+    # Bazel names exec configurations "<platform>-<compilation mode>-exec", optionally suffixed with a starlark-transition hash, e.g. "k8-opt-exec" or "darwin_arm64-opt-exec-ST-1a2b3c4d". Pre-exec-configuration Bazel called it "host".
+    mnemonic = getattr(configuration, 'mnemonic', None) or ''
+    return '-exec' in mnemonic or mnemonic == 'host'
+
+
+def _drop_redundant_exec_outputs(outputs, aquery_output):
+    """Drops exec-configuration compile actions for files that also compile in the target configuration.
+
+    Takes and returns the per-action (source_files, header_files, args) tuples of _get_cpp_command_for_files.
+    See _prefer_target_config for why this is opt-in, and why exec-ONLY files are deliberately kept.
+    """
+    exec_configuration_ids = {
+        configuration.id
+        for configuration in getattr(aquery_output, 'configuration', None) or []
+        if _is_exec_configuration(configuration)
+    }
+    if not exec_configuration_ids: # Nothing was built for the exec configuration; nothing to dedupe.
+        return outputs
+
+    # `Executor.map` yields results in input order, so actions and outputs line up positionally.
+    outputs = list(outputs)
+    action_is_exec = [
+        getattr(action, 'configurationId', None) in exec_configuration_ids
+        for action in aquery_output.actions
+    ]
+
+    files_built_for_target = set()
+    for is_exec, output in zip(action_is_exec, outputs):
+        if output is None or is_exec: # None: skipped sourceless action; see _get_files.
+            continue
+        source_files, header_files, _ = output
+        files_built_for_target |= source_files | header_files
+
+    kept_outputs = []
+    dropped_actions = 0
+    dropped_files = 0
+    for is_exec, output in zip(action_is_exec, outputs):
+        if output is None or not is_exec:
+            kept_outputs.append(output)
+            continue
+        source_files, header_files, compile_command_args = output
+        # Keep whatever this exec action is the ONLY description of.
+        remaining_sources = source_files - files_built_for_target
+        remaining_headers = header_files - files_built_for_target
+        dropped_files += len(source_files) - len(remaining_sources)
+        if not remaining_sources and not remaining_headers:
+            dropped_actions += 1
+            continue
+        kept_outputs.append((remaining_sources, remaining_headers, compile_command_args))
+
+    if dropped_actions or dropped_files:
+        log_info(f">>> Preferring target-configuration commands: dropped {dropped_files} duplicate source entries ({dropped_actions} exec actions fully redundant)")
+
+    return kept_outputs
+
+
 def _convert_compile_commands(aquery_output):
     """Converts from Bazel's aquery format to de-Bazeled compile_commands.json entries.
 
@@ -1364,6 +1437,9 @@ def _convert_compile_commands(aquery_output):
         mp_context=_mp_context(),
     ) as threadpool:
         outputs = threadpool.map(_get_cpp_command_for_files, aquery_output.actions)
+
+    if _prefer_target_config():
+        outputs = _drop_redundant_exec_outputs(outputs, aquery_output)
 
     # Yield as compile_commands.json entries
     header_files_already_written = set()

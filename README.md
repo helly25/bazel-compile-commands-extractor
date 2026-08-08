@@ -248,6 +248,7 @@ corresponding macro parameter for a single run. Precedence:
 | `--bcce-output-dir=<dir>` | Write `compile_commands.json` into a different directory. |
 | `--bcce-exclude-headers=all\|external\|none` | Override `exclude_headers`. `none` (or empty) restores the macro default. |
 | `--bcce-trust-bazel-dep-files` (or `--nobcce-trust-bazel-dep-files`) | Reuse Bazel's `.d` dependency files based on mtime alone, restoring the header-extraction fast path on Bazel 9. Override `trust_bazel_dep_files`. |
+| `--bcce-prefer-target-config` (or `--nobcce-prefer-target-config`) | Emit only the target-configuration command for files that are compiled in both the target and the exec configuration. Off by default. |
 
 Notes:
 
@@ -264,6 +265,20 @@ Notes:
   `.d` files on mtime alone. The tradeoff: if you change compile flags that
   change which headers are included but don't rebuild, you may get slightly
   stale headers until the next build.
+- **`--bcce-prefer-target-config`** removes duplicate work in consumers. A
+  source reachable both normally and through a tool that runs on the build
+  machine (a code generator, say) is compiled twice by Bazel — once in the
+  target configuration, once in the exec configuration — and both commands are
+  emitted, differing only in build flags. That is accurate, but it makes
+  per-entry consumers do the work twice; `clang-tidy` in particular lints the
+  file once per entry. Opting in keeps just the target-configuration command.
+  Files compiled **only** in the exec configuration (tools and tool-only
+  headers) always keep their exec command, so nothing drops out of the compile
+  database — only redundant entries for files that are also described by a
+  target-configuration command. Deduplication happens within each analyzed
+  target, the same scope header deduplication already uses; if you configure
+  several target/flags pairs, a file reached in different configurations by
+  different pairs keeps both entries.
 
 Example — suppress colored output:
 
