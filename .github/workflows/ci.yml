@@ -124,6 +124,18 @@ jobs:
       - name: Verify expected files in compile_commands.json
         run: ./verify_compile_commands.sh
 
+      - name: Generate compile_commands.json with --bcce-prefer-target-config
+        # Same extraction, opting into exec-configuration deduplication. The
+        # fixture compiles shared.cc in both configurations and toolonly.cc in
+        # the exec configuration only, so this run pins both halves of the
+        # contract: the duplicate goes, the exec-only file stays.
+        run: |
+          rm -f compile_commands.json
+          bazel run //:refresh -- --bcce-prefer-target-config
+
+      - name: Verify deduplicated compile_commands.json
+        run: ./verify_compile_commands.sh --deduped
+
   # Runs the hooks from .pre-commit-config.yaml. Without this job that config is
   # advisory: it only binds contributors who ran `pre-commit install` locally, so
   # a PR from anyone who did not can land whitespace/EOF/AST violations that the
