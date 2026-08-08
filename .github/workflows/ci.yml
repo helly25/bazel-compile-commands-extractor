@@ -124,6 +124,21 @@ jobs:
       - name: Verify expected files in compile_commands.json
         run: ./verify_compile_commands.sh
 
+  # Runs the hooks from .pre-commit-config.yaml. Without this job that config is
+  # advisory: it only binds contributors who ran `pre-commit install` locally, so
+  # a PR from anyone who did not can land whitespace/EOF/AST violations that the
+  # hooks would have caught. Enforcing it here makes the config apply to every
+  # PR, whoever opens it.
+  pre-commit:
+    name: pre-commit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: pre-commit/action@v3.0.1
+
   # Single, stable status check for branch protection. The matrix job names
   # ("refresh_all (ubuntu-latest)", etc.) change whenever the OS list changes,
   # so requiring each one individually is brittle. This gate aggregates them:
@@ -133,7 +148,7 @@ jobs:
   ci-done:
     name: CI done
     if: always()
-    needs: [refresh-all, integration]
+    needs: [refresh-all, integration, pre-commit]
     runs-on: ubuntu-latest
     steps:
       - name: Fail if any dependency did not succeed
