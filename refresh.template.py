@@ -1444,8 +1444,8 @@ def _convert_compile_commands(aquery_output):
     # Python (arg patching, makefile-deps parsing, regex/path manipulation) that
     # the GIL bottlenecks a ThreadPoolExecutor to ~one core. ProcessPoolExecutor
     # was measured ~6x faster upstream. See
-    # https://github.com/hedronvision/bazel-compile-commands-extractor/pull/250    
-    # Windows does not support fork(), and spawn() causes a BrokenProcessPool. So 
+    # https://github.com/hedronvision/bazel-compile-commands-extractor/pull/250
+    # Windows does not support fork(), and spawn() causes a BrokenProcessPool. So
     # when fork is not available, fallback to a ThreadPoolExecutor.
     if mp_context is None:
         Executor = concurrent.futures.ThreadPoolExecutor
