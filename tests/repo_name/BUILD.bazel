@@ -1,0 +1,14 @@
+# Loaded through the RENAMED repo, so any raw "@hedron_compile_commands//..."
+# label inside the macro fails to resolve here. See MODULE.bazel.
+load("@bcce//:refresh_compile_commands.bzl", "refresh_compile_commands")
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+cc_library(
+    name = "trivial",
+    srcs = ["trivial.cc"],
+)
+
+refresh_compile_commands(
+    name = "refresh",
+    targets = ["//:trivial"],
+)
