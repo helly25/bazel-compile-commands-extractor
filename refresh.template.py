@@ -1437,17 +1437,25 @@ def _convert_compile_commands(aquery_output):
             assert not target.startswith('//external'), f"Expecting external targets will start with @. Found //external for action {action}, target {target}"
             action.is_external = target.startswith('@') and not target.startswith('@//')
 
+    mp_context = _mp_context()
+
     # Process each action from Bazelisms -> file paths and their clang commands.
     # Use processes rather than threads: per-action work has enough CPU-bound
     # Python (arg patching, makefile-deps parsing, regex/path manipulation) that
     # the GIL bottlenecks a ThreadPoolExecutor to ~one core. ProcessPoolExecutor
     # was measured ~6x faster upstream. See
     # https://github.com/hedronvision/bazel-compile-commands-extractor/pull/250
-    with concurrent.futures.ProcessPoolExecutor(
-        max_workers=_threads(),
-        mp_context=_mp_context(),
-    ) as threadpool:
-        outputs = threadpool.map(_get_cpp_command_for_files, aquery_output.actions)
+    # Windows does not support fork(), and spawn() causes a BrokenProcessPool. So
+    # when fork is not available, fallback to a ThreadPoolExecutor.
+    if mp_context is None:
+        Executor = concurrent.futures.ThreadPoolExecutor
+        executor_kwargs = {'max_workers': _threads()}
+    else:
+        Executor = concurrent.futures.ProcessPoolExecutor
+        executor_kwargs = {'max_workers': _threads(), 'mp_context': mp_context}
+
+    with Executor(**executor_kwargs) as pool:
+        outputs = pool.map(_get_cpp_command_for_files, aquery_output.actions)
 
     if _prefer_target_config():
         outputs = _drop_redundant_exec_outputs(outputs, aquery_output)
