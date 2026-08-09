@@ -124,6 +124,65 @@ jobs:
       - name: Verify expected files in compile_commands.json
         run: ./verify_compile_commands.sh
 
+      - name: Generate compile_commands.json with --bcce-prefer-target-config
+        # Same extraction, opting into exec-configuration deduplication. The
+        # fixture compiles shared.cc in both configurations and toolonly.cc in
+        # the exec configuration only, so this run pins both halves of the
+        # contract: the duplicate goes, the exec-only file stays.
+        run: |
+          rm -f compile_commands.json
+          bazel run //:refresh -- --bcce-prefer-target-config
+
+      - name: Verify deduplicated compile_commands.json
+        run: ./verify_compile_commands.sh --deduped
+
+  # Runs the hooks from .pre-commit-config.yaml. Without this job that config is
+  # advisory: it only binds contributors who ran `pre-commit install` locally, so
+  # a PR from anyone who did not can land whitespace/EOF/AST violations that the
+  # hooks would have caught. Enforcing it here makes the config apply to every
+  # PR, whoever opens it.
+  pre-commit:
+    name: pre-commit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: pre-commit/action@v3.0.1
+
+  # A consumer may rename this module via `bazel_dep(..., repo_name = ...)`. A macro
+  # that writes raw "@hedron_compile_commands//..." labels has them resolved in the
+  # CALLER's repo context, so such a rename used to fail at analysis. Analysis of the
+  # renamed module's `//:refresh` is enough to catch a regression - no extraction needed.
+  repo-name:
+    name: repo_name (${{ matrix.os }}, bazel ${{ matrix.bazel }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        bazel: [8.7.0, 9.1.1]
+    env:
+      USE_BAZEL_VERSION: ${{ matrix.bazel }}
+    defaults:
+      run:
+        working-directory: tests/repo_name
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pin Bazel version
+        run: echo "${{ matrix.bazel }}" > .bazelversion
+
+      - uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-repo-name-${{ matrix.os }}-${{ matrix.bazel }}
+          repository-cache: true
+
+      - name: Analyze the refresh target through the renamed repo
+        run: bazel build //:refresh
+
   # Single, stable status check for branch protection. The matrix job names
   # ("refresh_all (ubuntu-latest)", etc.) change whenever the OS list changes,
   # so requiring each one individually is brittle. This gate aggregates them:
@@ -133,7 +192,7 @@ jobs:
   ci-done:
     name: CI done
     if: always()
-    needs: [refresh-all, integration]
+    needs: [refresh-all, integration, pre-commit, repo-name]
     runs-on: ubuntu-latest
     steps:
       - name: Fail if any dependency did not succeed

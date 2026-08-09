@@ -1,0 +1,26 @@
+# Regression module for repo-mapping-safe labels in `refresh_compile_commands`.
+#
+# The point of this module is the `repo_name` below. A macro that writes a raw
+# string label such as "@hedron_compile_commands//:print_args" has it resolved in
+# the repo context of whoever CALLS the macro, not the one that defines the .bzl.
+# So a consumer that renames this module - entirely legal, and what helly25/mbo
+# does - used to fail at analysis with:
+#
+#   No repository visible as '@hedron_compile_commands' from main repository
+#
+# The fix is `Label(...)`, which resolves in the defining repo. Analysis of
+# `//:refresh` is enough to catch a regression; the extraction itself is covered
+# by tests/integration.
+module(
+    name = "hedron_compile_commands_repo_name_test",
+    version = "0.0.0",
+)
+
+bazel_dep(name = "rules_cc", version = "0.2.18")
+
+# Deliberately NOT the default name: that is the whole test.
+bazel_dep(name = "hedron_compile_commands", version = "0.0.0", repo_name = "bcce")
+local_path_override(
+    module_name = "hedron_compile_commands",
+    path = "../..",
+)
