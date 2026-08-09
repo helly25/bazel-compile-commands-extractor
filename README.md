@@ -249,6 +249,7 @@ corresponding macro parameter for a single run. Precedence:
 | `--bcce-exclude-headers=all\|external\|none` | Override `exclude_headers`. `none` (or empty) restores the macro default. |
 | `--bcce-trust-bazel-dep-files` (or `--nobcce-trust-bazel-dep-files`) | Reuse Bazel's `.d` dependency files based on mtime alone, restoring the header-extraction fast path on Bazel 9. Override `trust_bazel_dep_files`. |
 | `--bcce-prefer-target-config` (or `--nobcce-prefer-target-config`) | Emit only the target-configuration command for files that are compiled in both the target and the exec configuration. Off by default. |
+| `--bcce-update-gitignore` (or `--nobcce-update-gitignore`) | Add ignore entries for the output we generate to `.git/info/exclude`. On by default. Overrides `update_gitignore`. |
 
 Notes:
 
@@ -279,6 +280,19 @@ Notes:
   target, the same scope header deduplication already uses; if you configure
   several target/flags pairs, a file reached in different configurations by
   different pairs keeps both entries.
+- **`--bcce-update-gitignore`** controls the only thing this tool writes
+  outside your workspace. By default we append patterns for the output we
+  generate (the `external` link, the `bazel-*` links, `compile_commands.json`,
+  and clangd's `.cache/`) to `.git/info/exclude`, so none of it clutters
+  `git status` without you checking anything in. Opting out with
+  `--nobcce-update-gitignore` (or `update_gitignore = False` on the macro)
+  leaves git's ignore state entirely to you
+  ([#25](https://github.com/helly25/bazel-compile-commands-extractor/issues/25)).
+  Two things worth knowing even if you leave it on: `.git/info/exclude` is
+  shared by every worktree of the repository, and we skip any pattern git
+  already ignores, so a project that checks these into its `.gitignore` gets
+  nothing written at all. If `.git` isn't writable we warn and carry on rather
+  than failing the run.
 
 Example — suppress colored output:
 

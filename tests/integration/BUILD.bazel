@@ -98,3 +98,12 @@ refresh_compile_commands(
         "//:uses_generated",
     ],
 )
+
+# Same extraction, but with the macro attribute turned off, so
+# verify_gitignore_behavior.sh can cover the .bzl plumbing for
+# `update_gitignore` and not just the --nobcce-update-gitignore runtime flag.
+refresh_compile_commands(
+    name = "refresh_no_gitignore",
+    targets = ["//:greeter_lib"],
+    update_gitignore = False,
+)
