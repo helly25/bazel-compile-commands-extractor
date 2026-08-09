@@ -136,6 +136,14 @@ jobs:
       - name: Verify deduplicated compile_commands.json
         run: ./verify_compile_commands.sh --deduped
 
+      # Covers what the tool writes into git: the --nobcce-update-gitignore /
+      # `update_gitignore` opt-out, that we skip patterns git already ignores,
+      # and that an unwritable .git warns rather than killing the run (which it
+      # used to do, see issue #25). Runs against a throwaway git repository it
+      # creates inside tests/integration, so this checkout's .git is untouched.
+      - name: Verify gitignore behavior
+        run: ./verify_gitignore_behavior.sh
+
   # Runs the hooks from .pre-commit-config.yaml. Without this job that config is
   # advisory: it only binds contributors who ran `pre-commit install` locally, so
   # a PR from anyone who did not can land whitespace/EOF/AST violations that the

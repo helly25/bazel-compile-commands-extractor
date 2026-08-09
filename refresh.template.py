@@ -140,6 +140,17 @@ def _prefer_target_config():
     return _get_bool_arg('bcce-prefer-target-config', default=False)
 
 
+def _update_gitignore():
+    """Whether to add ignore entries for our generated output to git: --bcce-update-gitignore > macro `update_gitignore`.
+
+    On by default, so the `external` link, the `bazel-*` links, `compile_commands.json`, and clangd's `.cache/` stay out of `git status` without anyone having to check anything in. See _ensure_gitignore_entries_exist.
+    Opting out leaves git's ignore state entirely to you. Worth doing if you'd rather manage those patterns in a committed `.gitignore`, or if writing to `.git/info/exclude` (shared by every worktree of the repository) is unwelcome. See https://github.com/helly25/bazel-compile-commands-extractor/issues/25
+    """
+    if _get_last_arg('bcce-update-gitignore', default='auto', is_bool=True) != 'auto':
+        return _get_bool_arg('bcce-update-gitignore', default={update_gitignore})
+    return {update_gitignore}
+
+
 @functools.lru_cache(maxsize=None)
 def _non_bcce_args():
     """Returns `sys.argv[1:]` with all bcce args removed."""
@@ -1627,8 +1638,24 @@ def _ensure_external_workspaces_link_exists():
     It's a win/win: It's easier for you to browse the code you use, and it eliminates whole categories of edge cases for build tooling.""")
 
 
+def _paths_already_ignored(paths):
+    """Of `paths` (relative to the workspace root), those git already ignores, by whatever means."""
+    # Asking git beats re-implementing its precedence rules: an entry may already be covered by a committed `.gitignore`, a parent directory's, core.excludesFile, or a previous run of ours. Without this we append to `.git/info/exclude` even for people who did the tidy thing and checked the patterns in.
+    # Note that `git check-ignore` reports a *tracked* path as not-ignored, which is what we want: ignore rules don't apply to it anyway, so re-adding the pattern is harmless and preserves the historical behaviour.
+    check_ignore_process = subprocess.run(['git', 'check-ignore', '--'] + list(paths),
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        encoding=locale.getpreferredencoding(),
+        check=False, # Exit code 1 simply means "none of them are ignored", and anything else (128, git missing) should leave us adding every entry, as we did before this check existed.
+    )
+    return frozenset(check_ignore_process.stdout.splitlines())
+
+
 def _ensure_gitignore_entries_exist():
     """Ensure `//compile_commands.json`, `//external`, and other useful entries are `.gitignore`'d if in a git repo."""
+    # Opting out (`--nobcce-update-gitignore`, or `update_gitignore = False` on the macro) leaves git's ignore state alone entirely. See _update_gitignore.
+    if not _update_gitignore():
+        return
+
     # Silently check if we're (nested) within a git repository. It isn't sufficient to check for the presence of a `.git` directory, in case, e.g., the bazel workspace is nested inside the git repository or you're off in a git worktree.
     git_dir_process = subprocess.run('git rev-parse --git-common-dir', # common-dir because despite current gitignore docs, there's just one info/exclude in the common git dir, not one in each of the worktree's git dirs.
         shell=True,  # Ensure this will still fail with a nonzero error code even if `git` isn't installed, unifying error cases.
@@ -1643,7 +1670,6 @@ def _ensure_gitignore_entries_exist():
     # IMO tools should to do this more broadly, especially now that git is so dominant.
     # Hidden gitignore documented in https://git-scm.com/docs/gitignore
     git_dir = pathlib.Path(git_dir_process.stdout.rstrip())
-    (git_dir / 'info').mkdir(exist_ok=True) # Some older git versions don't auto create .git/info/, creating an error on exclude file open. See https://github.com/hedronvision/bazel-compile-commands-extractor/issues/114 for more context. We'll create the .git/info/ if needed; the git docs don't guarantee its existance. (We could instead back to writing .gitignore in the repo and bazel workspace, but we don't because this case is rare and because future git versions would be within their rights to read .git/info/exclude but not auto-create .git/info/)
     hidden_gitignore_path = git_dir / 'info' / 'exclude'
 
     # Get path to the workspace root (current working directory) from the git repository root
@@ -1654,32 +1680,48 @@ def _ensure_gitignore_entries_exist():
     )
     pattern_prefix = git_prefix_process.stdout.rstrip()
 
-    # Each (pattern, explanation) will be added to the `.gitignore` file if the pattern isn't present.
+    # Each (pattern, path we'd be ignoring, explanation) will be added to the `.gitignore` file if the pattern isn't present.
+    # The path is what we hand `git check-ignore` to ask whether the pattern is already covered; it's relative to the workspace root (our cwd), which is exactly what the leading `/{pattern_prefix}` on each pattern anchors to.
     needed_entries = [
-        (f'/{pattern_prefix}external', "# Ignore the `external` link (that is added by `bazel-compile-commands-extractor`). The link differs between macOS/Linux and Windows, so it shouldn't be checked in. The pattern must not end with a trailing `/` because it's a symlink on macOS/Linux."),
-        (f'/{pattern_prefix}bazel-*', "# Ignore links to Bazel's output. The pattern needs the `*` because people can change the name of the directory into which your repository is cloned (changing the `bazel-<workspace_name>` symlink), and must not end with a trailing `/` because it's a symlink on macOS/Linux. This ignore pattern should almost certainly be checked into a .gitignore in your workspace root, too, for folks who don't use this tool."),
-        (f'/{pattern_prefix}compile_commands.json', "# Ignore generated output. Although valuable (after all, the primary purpose of `bazel-compile-commands-extractor` is to produce `compile_commands.json`!), it should not be checked in."),
-        ('.cache/', "# Ignore the directory in which `clangd` stores its local index."),
+        (f'/{pattern_prefix}external', 'external', "# Ignore the `external` link (that is added by `bazel-compile-commands-extractor`). The link differs between macOS/Linux and Windows, so it shouldn't be checked in. The pattern must not end with a trailing `/` because it's a symlink on macOS/Linux."),
+        (f'/{pattern_prefix}bazel-*', 'bazel-out', "# Ignore links to Bazel's output. The pattern needs the `*` because people can change the name of the directory into which your repository is cloned (changing the `bazel-<workspace_name>` symlink), and must not end with a trailing `/` because it's a symlink on macOS/Linux. This ignore pattern should almost certainly be checked into a .gitignore in your workspace root, too, for folks who don't use this tool."),
+        (f'/{pattern_prefix}compile_commands.json', 'compile_commands.json', "# Ignore generated output. Although valuable (after all, the primary purpose of `bazel-compile-commands-extractor` is to produce `compile_commands.json`!), it should not be checked in."),
+        # Anchored like the entries above, rather than the bare `.cache/` we used to write. Unanchored, it matched every directory of that name anywhere in the repository, so an unrelated `.cache/` elsewhere in a monorepo silently vanished from `git status`. clangd puts its index at the project root, which is where this lands.
+        # Probed one level down, unlike the entries above. A directory-only pattern (one ending in `/`) only matches a path git can see is a directory, so probing `.cache` would miss an existing `.cache/` rule whenever clangd hasn't created the directory yet. Probing a path inside it matches whether or not anything exists, and matches the bare `.cache/` we used to write as well as the anchored form, so nobody gets a duplicate on upgrade.
+        (f'/{pattern_prefix}.cache/', '.cache/clangd', "# Ignore the directory in which `clangd` stores its local index."),
     ]
 
-    # Create `.gitignore` if it doesn't exist (and don't truncate if it does) and open it for appending/updating.
-    with open(hidden_gitignore_path, 'a+') as gitignore:
-        gitignore.seek(0)  # Files opened in `a` mode seek to the end, so we reset to the beginning so we can read.
-        # Recall that trailing spaces, when escaped with `\`, are meaningful to git. However, none of the entries for which we're searching end with literal spaces, so we can safely trim all trailing whitespace. That said, we can't rewrite these stripped lines to the file, in case an existing entry is e.g. `/foo\ `, matching the file "foo " (with a trailing space), whereas the entry `/foo\` does not match the file `"foo "`.
-        lines = [l.rstrip() for l in gitignore]
-        # Comments must be on their own line, so we can safely check for equality here.
-        missing = [entry for entry in needed_entries if entry[0] not in lines]
-        if not missing:
-            return
-        # Add a spacer before the header if the last line is nonempty.
-        if lines and lines[-1]:
-            print(file=gitignore)
-        # Add a nice header.
-        print("### Automatically added by Hedron's Bazel Compile Commands Extractor: https://github.com/hedronvision/bazel-compile-commands-extractor", file=gitignore)
-        # Append the missing entries.
-        for pattern, comment in missing:
-            print(comment, file=gitignore)
-            print(pattern, file=gitignore)
+    already_ignored = _paths_already_ignored([path for _, path, _ in needed_entries])
+    candidate_entries = [entry for entry in needed_entries if entry[1] not in already_ignored]
+    # Bail before touching `.git` at all when git already ignores everything we'd add: opening the exclude file in append mode creates it, and leaving behind an empty file we never needed is exactly the sort of uninvited write inside `.git` that issue #25 is about.
+    if not candidate_entries:
+        return
+
+    # Writing here is a convenience, not part of producing compile_commands.json, so an unwritable `.git` must not take the whole run down with it -- read-only checkouts, containers where `.git` belongs to another user, and CI caches all hit this. See https://github.com/helly25/bazel-compile-commands-extractor/issues/25
+    try:
+        (git_dir / 'info').mkdir(exist_ok=True) # Some older git versions don't auto create .git/info/, creating an error on exclude file open. See https://github.com/hedronvision/bazel-compile-commands-extractor/issues/114 for more context. We'll create the .git/info/ if needed; the git docs don't guarantee its existance. (We could instead back to writing .gitignore in the repo and bazel workspace, but we don't because this case is rare and because future git versions would be within their rights to read .git/info/exclude but not auto-create .git/info/)
+        # Create `.gitignore` if it doesn't exist (and don't truncate if it does) and open it for appending/updating.
+        with open(hidden_gitignore_path, 'a+') as gitignore:
+            gitignore.seek(0)  # Files opened in `a` mode seek to the end, so we reset to the beginning so we can read.
+            # Recall that trailing spaces, when escaped with `\`, are meaningful to git. However, none of the entries for which we're searching end with literal spaces, so we can safely trim all trailing whitespace. That said, we can't rewrite these stripped lines to the file, in case an existing entry is e.g. `/foo\ `, matching the file "foo " (with a trailing space), whereas the entry `/foo\` does not match the file `"foo "`.
+            lines = [l.rstrip() for l in gitignore]
+            # Comments must be on their own line, so we can safely check for equality here.
+            missing = [entry for entry in candidate_entries if entry[0] not in lines]
+            if not missing:
+                return
+            # Add a spacer before the header if the last line is nonempty.
+            if lines and lines[-1]:
+                print(file=gitignore)
+            # Add a nice header.
+            print("### Automatically added by Hedron's Bazel Compile Commands Extractor: https://github.com/hedronvision/bazel-compile-commands-extractor", file=gitignore)
+            # Append the missing entries.
+            for pattern, _, comment in missing:
+                print(comment, file=gitignore)
+                print(pattern, file=gitignore)
+    except OSError as e:
+        log_warning(f""">>> Skipping the .gitignore update: couldn't write {hidden_gitignore_path} ({e}).
+    Carrying on; this doesn't affect compile_commands.json. Ignore the generated output yourself, or pass --nobcce-update-gitignore to stop us trying.""")
+        return
     log_success(">>> Automatically added entries to .git/info/exclude to gitignore generated output.")
 
 

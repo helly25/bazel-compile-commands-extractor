@@ -53,6 +53,11 @@ refresh_compile_commands(
         # ^ Restores the fast path. Tradeoff: if you change compile flags that change which headers are included but don't rebuild, you may get slightly stale headers until the next build. Off by default to keep results exact.
     # Still not fast enough?
         # Make sure you're specifying just the targets you care about by setting `targets`, above.
+
+    # By default we add ignore entries for the output we generate (the `external` link, the `bazel-*` links, compile_commands.json, and clangd's `.cache/`) to `.git/info/exclude`, so none of it shows up in `git status` without you having to check anything in.
+        # If you'd rather manage those patterns yourself--in a committed `.gitignore`, say--or you don't want us writing inside `.git` at all, set:
+        # update_gitignore = False,
+        # ^ We then leave git's ignore state completely alone. Nothing else changes. See https://github.com/helly25/bazel-compile-commands-extractor/issues/25
 ```
 """
 
@@ -70,6 +75,7 @@ def refresh_compile_commands(
         exclude_headers = None,
         exclude_external_sources = False,
         trust_bazel_dep_files = False,
+        update_gitignore = True,
         # Macro-only by design; there is no `--bcce-bazel` runtime counterpart.
         # See "Why isn't there a `--bcce-bazel` runtime flag?" in README.md.
         bazel_command = "bazel",
@@ -100,7 +106,7 @@ def refresh_compile_commands(
 
     # Generate the core, runnable python script from refresh.template.py
     script_name = name + ".py"
-    _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, trust_bazel_dep_files = trust_bazel_dep_files, bazel_command = bazel_command, max_threads = max_threads, output_dir = output_dir, **kwargs)
+    _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, trust_bazel_dep_files = trust_bazel_dep_files, update_gitignore = update_gitignore, bazel_command = bazel_command, max_threads = max_threads, output_dir = output_dir, **kwargs)
 
     # Combine them so the wrapper calls the main script.
     # Tag "manual" so `bazel build //...` won't try to build this when
@@ -142,6 +148,7 @@ def _expand_template_impl(ctx):
             "{output_dir}": repr(ctx.attr.output_dir),
             "{print_args_executable}": repr(ctx.executable._print_args_executable.path),
             "{trust_bazel_dep_files}": repr(ctx.attr.trust_bazel_dep_files),
+            "{update_gitignore}": repr(ctx.attr.update_gitignore),
         },
     )
     return DefaultInfo(files = depset([script]))
@@ -155,6 +162,7 @@ _expand_template = rule(
         "max_threads": attr.int(default = 0),  # 0 means "use the historical default" inside refresh.template.py
         "output_dir": attr.string(default = ""),  # Empty means: write to the workspace root (cwd, the historical behaviour).
         "trust_bazel_dep_files": attr.bool(default = False),  # Reuse Bazel's `.d` files via mtime alone, skipping the action-cache guard that's unavailable on Bazel >= 9. See issue #23.
+        "update_gitignore": attr.bool(default = True),  # Add ignore entries for our generated output to `.git/info/exclude`. Set False to leave git's ignore state entirely to the user. See issue #25.
         # For Windows INCLUDE. If this were eliminated, for example by the resolution of https://github.com/clangd/clangd/issues/123, we'd be able to just use a macro and skylib's expand_template rule: https://github.com/bazelbuild/bazel-skylib/pull/330
         # Once https://github.com/bazelbuild/bazel/pull/17108 is widely released, we should be able to eliminate this and get INCLUDE directly. Perhaps for 7.0? Should be released in the sucessor to 6.0
         "_cc_toolchain": attr.label(default = "@bazel_tools//tools/cpp:current_cc_toolchain"),
