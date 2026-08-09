@@ -114,7 +114,11 @@ def refresh_compile_commands(
         name = name,
         main = version_checker_script_name,
         srcs = [version_checker_script_name, script_name],
-        data = ["@hedron_compile_commands//:print_args"],
+        # `Label(...)`, not a plain string: a macro's raw string label is resolved in the repo context of
+        # whoever CALLS the macro, so a consumer that renames this module (`bazel_dep(..., repo_name = ...)`)
+        # would fail with "No repository visible as '@hedron_compile_commands'". A `Label` is resolved in the
+        # repo that defines this .bzl, which is correct regardless of what the consumer calls us.
+        data = [Label("@hedron_compile_commands//:print_args")],
         imports = [''], # Allows binary to import templated script, even if this macro is being called inside a sub package. See https://github.com/hedronvision/bazel-compile-commands-extractor/issues/137
         tags = tags,
         **kwargs

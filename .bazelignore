@@ -1,4 +1,7 @@
-# The integration test is a self-contained nested Bazel module; the outer
-# workspace must not descend into it (it is built/tested on its own, see
-# tests/integration/ and .github/workflows/ci.yml).
+# Each test under tests/ is a self-contained nested Bazel module; the outer
+# workspace must not descend into them (they are built/tested on their own, see
+# tests/ and .github/workflows/ci.yml). tests/repo_name in particular loads its
+# dep under a renamed repo (@bcce), which is not visible from this module, so
+# `//:refresh_all`'s `deps(@//...)` would fail to load the package otherwise.
 tests/integration
+tests/repo_name

@@ -10,3 +10,4 @@ MODULE.bazel.lock
 /tests/integration/compile_commands.json
 /tests/integration/external
 /tests/integration/bazel-*
+/tests/repo_name/bazel-*
