@@ -832,9 +832,8 @@ _get_headers.has_logged = False
 _get_headers.output_extensions = ('.o', '.obj', '.processed')
 
 
-def _get_files(compile_action):
-    """Gets the ({source files}, {header files}) clangd should be told the command applies to."""
-
+def _get_source_file(compile_action):
+    """Returns the source file compiled by an action, or None for a sourceless action."""
     # Getting the source file is a little trickier than it might seem.
 
     # First, we do the obvious thing: Filter args to those that look like source files.
@@ -871,6 +870,15 @@ def _get_files(compile_action):
 
         source_file = compile_action.arguments[source_index]
         assert source_file.endswith(_get_files.source_extensions), f"Source file candidate, {source_file}, seems to be wrong.\nSelected from {compile_action.arguments}.\nPlease file an issue with this information!"
+
+    return source_file
+
+
+def _get_files(compile_action):
+    """Gets the ({source files}, {header files}) clangd should be told the command applies to."""
+    source_file = _get_source_file(compile_action)
+    if source_file is None:
+        return None
 
     # Warn gently about missing files
     if not os.path.isfile(source_file):
@@ -1367,7 +1375,43 @@ def _is_exec_configuration(configuration):
     return '-exec' in mnemonic or mnemonic == 'host'
 
 
-def _drop_redundant_exec_outputs(outputs, aquery_output):
+def _source_identity(source_file):
+    """Returns a configuration-independent identity for a source path."""
+    return re.sub(r'^bazel-out/[^/]+/bin/', '', source_file)
+
+
+def _drop_redundant_exec_actions(actions, aquery_output):
+    """Drops exec actions whose source also has a target-configuration action.
+
+    This runs before header discovery so a redundant exec action cannot probe a
+    generated input that Bazel did not materialize after a cache hit.
+    """
+    exec_configuration_ids = {
+        configuration.id
+        for configuration in getattr(aquery_output, 'configuration', None) or []
+        if _is_exec_configuration(configuration)
+    }
+    if not exec_configuration_ids:
+        return actions, 0
+
+    source_by_action = [_get_source_file(action) for action in actions]
+    target_sources = {
+        _source_identity(source)
+        for action, source in zip(actions, source_by_action)
+        if source is not None and getattr(action, 'configurationId', None) not in exec_configuration_ids
+    }
+    kept = []
+    dropped = 0
+    for action, source in zip(actions, source_by_action):
+        is_exec = getattr(action, 'configurationId', None) in exec_configuration_ids
+        if is_exec and source is not None and _source_identity(source) in target_sources:
+            dropped += 1
+        else:
+            kept.append(action)
+    return kept, dropped
+
+
+def _drop_redundant_exec_outputs(outputs, actions, aquery_output):
     """Drops exec-configuration compile actions for files that also compile in the target configuration.
 
     Takes and returns the per-action (source_files, header_files, args) tuples of _get_cpp_command_for_files.
@@ -1385,7 +1429,7 @@ def _drop_redundant_exec_outputs(outputs, aquery_output):
     outputs = list(outputs)
     action_is_exec = [
         getattr(action, 'configurationId', None) in exec_configuration_ids
-        for action in aquery_output.actions
+        for action in actions
     ]
 
     files_built_for_target = set()
@@ -1443,14 +1487,21 @@ def _convert_compile_commands(aquery_output):
     # the GIL bottlenecks a ThreadPoolExecutor to ~one core. ProcessPoolExecutor
     # was measured ~6x faster upstream. See
     # https://github.com/hedronvision/bazel-compile-commands-extractor/pull/250
+    actions = list(aquery_output.actions)
+    skipped_actions = 0
+    if _prefer_target_config():
+        actions, skipped_actions = _drop_redundant_exec_actions(actions, aquery_output)
+
     with concurrent.futures.ProcessPoolExecutor(
         max_workers=_threads(),
         mp_context=_mp_context(),
     ) as threadpool:
-        outputs = threadpool.map(_get_cpp_command_for_files, aquery_output.actions)
+        outputs = threadpool.map(_get_cpp_command_for_files, actions)
 
     if _prefer_target_config():
-        outputs = _drop_redundant_exec_outputs(outputs, aquery_output)
+        outputs = _drop_redundant_exec_outputs(outputs, actions, aquery_output)
+        if skipped_actions:
+            log_info(f">>> Preferring target-configuration commands: skipped {skipped_actions} redundant exec actions before source probing")
 
     # Yield as compile_commands.json entries
     header_files_already_written = set()
