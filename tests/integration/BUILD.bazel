@@ -16,8 +16,17 @@ cc_library(
 
 cc_library(
     name = "shared_lib",
-    srcs = ["shared.cc"],
+    srcs = [
+        "shared.cc",
+        ":generated.cc",
+    ],
     hdrs = ["shared.h"],
+)
+
+genrule(
+    name = "generated_source",
+    outs = ["generated.cc"],
+    cmd = "echo 'int generated_value() { return 42; }' > $@",
 )
 
 # Reachable only through the `generator` tool, hence compiled only in the exec

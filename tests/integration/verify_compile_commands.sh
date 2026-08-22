@@ -39,6 +39,7 @@ expected=(
   # Compiled in both configurations (target via greeter_lib/uses_generated,
   # exec via the generator tool).
   shared.cc shared.h
+  generated.cc
   # Compiled ONLY in the exec configuration, via the generator tool. Present in
   # both modes: --bcce-prefer-target-config keeps exec-only files.
   toolonly.cc toolonly.h
@@ -80,6 +81,8 @@ count_entries() { # <basename> <exec|target>
 shared_exec="$(count_entries shared.cc exec)"
 shared_target="$(count_entries shared.cc target)"
 toolonly_exec="$(count_entries toolonly.cc exec)"
+generated_exec="$(count_entries generated.cc exec)"
+generated_target="$(count_entries generated.cc target)"
 
 if [[ "${mode}" == "deduped" ]]; then
   if [[ "${shared_exec}" -ne 0 ]]; then
@@ -93,6 +96,12 @@ if [[ "${mode}" == "deduped" ]]; then
     status=1
   else
     echo "OK: toolonly.cc kept its exec-configuration entry (exec-only files are preserved)"
+  fi
+  if [[ "${generated_exec}" -ne 0 || "${generated_target}" -lt 1 ]]; then
+    echo "ERROR: expected generated.cc only in the target configuration; got ${generated_target} target / ${generated_exec} exec." >&2
+    status=1
+  else
+    echo "OK: generated.cc keeps only its target-configuration entry"
   fi
 else
   # Guard the inverse, so a silent change to the default -- or a fixture that
