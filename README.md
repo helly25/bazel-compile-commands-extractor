@@ -249,6 +249,7 @@ corresponding macro parameter for a single run. Precedence:
 | `--bcce-exclude-headers=all\|external\|none` | Override `exclude_headers`. `none` (or empty) restores the macro default. |
 | `--bcce-trust-bazel-dep-files` (or `--nobcce-trust-bazel-dep-files`) | Reuse Bazel's `.d` dependency files based on mtime alone, restoring the header-extraction fast path on Bazel 9. Override `trust_bazel_dep_files`. |
 | `--bcce-prefer-target-config` (or `--nobcce-prefer-target-config`) | Emit only the target-configuration command for files that are compiled in both the target and the exec configuration. Off by default. |
+| `--bcce-quiet` (or `--nobcce-quiet`) | Suppress progress messages; warnings and errors still print. Off by default. Overrides `quiet`. |
 | `--bcce-update-gitignore` (or `--nobcce-update-gitignore`) | Add ignore entries for the output we generate to `.git/info/exclude`. On by default. Overrides `update_gitignore`. |
 
 Notes:

@@ -58,6 +58,10 @@ refresh_compile_commands(
         # If you'd rather manage those patterns yourself--in a committed `.gitignore`, say--or you don't want us writing inside `.git` at all, set:
         # update_gitignore = False,
         # ^ We then leave git's ignore state completely alone. Nothing else changes. See https://github.com/helly25/bazel-compile-commands-extractor/issues/25
+
+    # Refreshing from a build or a CI job, where the progress messages repeat in every log?
+        # quiet = True,
+        # ^ Silences progress messages only; warnings and errors still print.
 ```
 """
 
@@ -74,6 +78,7 @@ def refresh_compile_commands(
         targets = None,
         exclude_headers = None,
         exclude_external_sources = False,
+        quiet = False,
         trust_bazel_dep_files = False,
         update_gitignore = True,
         # Macro-only by design; there is no `--bcce-bazel` runtime counterpart.
@@ -106,7 +111,7 @@ def refresh_compile_commands(
 
     # Generate the core, runnable python script from refresh.template.py
     script_name = name + ".py"
-    _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, trust_bazel_dep_files = trust_bazel_dep_files, update_gitignore = update_gitignore, bazel_command = bazel_command, max_threads = max_threads, output_dir = output_dir, **kwargs)
+    _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, quiet = quiet, trust_bazel_dep_files = trust_bazel_dep_files, update_gitignore = update_gitignore, bazel_command = bazel_command, max_threads = max_threads, output_dir = output_dir, **kwargs)
 
     # Combine them so the wrapper calls the main script.
     # Tag "manual" so `bazel build //...` won't try to build this when
@@ -147,6 +152,7 @@ def _expand_template_impl(ctx):
             "{max_threads}": repr(ctx.attr.max_threads if ctx.attr.max_threads > 0 else None),
             "{output_dir}": repr(ctx.attr.output_dir),
             "{print_args_executable}": repr(ctx.executable._print_args_executable.path),
+            "{quiet}": repr(ctx.attr.quiet),
             "{trust_bazel_dep_files}": repr(ctx.attr.trust_bazel_dep_files),
             "{update_gitignore}": repr(ctx.attr.update_gitignore),
         },
@@ -161,6 +167,7 @@ _expand_template = rule(
         "labels_to_flags": attr.string_dict(mandatory = True),  # string keys instead of label_keyed because Bazel doesn't support parsing wildcard target patterns (..., *, :all) in BUILD attributes.
         "max_threads": attr.int(default = 0),  # 0 means "use the historical default" inside refresh.template.py
         "output_dir": attr.string(default = ""),  # Empty means: write to the workspace root (cwd, the historical behaviour).
+        "quiet": attr.bool(default = False),  # Suppress progress messages, leaving warnings and errors. Worth setting where the refresh runs from a build or CI job.
         "trust_bazel_dep_files": attr.bool(default = False),  # Reuse Bazel's `.d` files via mtime alone, skipping the action-cache guard that's unavailable on Bazel >= 9. See issue #23.
         "update_gitignore": attr.bool(default = True),  # Add ignore entries for our generated output to `.git/info/exclude`. Set False to leave git's ignore state entirely to the user. See issue #25.
         # For Windows INCLUDE. If this were eliminated, for example by the resolution of https://github.com/clangd/clangd/issues/123, we'd be able to just use a macro and skylib's expand_template rule: https://github.com/bazelbuild/bazel-skylib/pull/330

@@ -151,6 +151,16 @@ def _update_gitignore():
     return {update_gitignore}
 
 
+def _quiet():
+    """Whether to suppress progress messages: --bcce-quiet > macro `quiet`.
+
+    Off by default, so a run explains what it is doing. Turning it on silences `log_info` and `log_success`; warnings and errors are never suppressed. Worth doing where the refresh runs from a build or a CI job, in which the progress lines repeat in every log and only failures are interesting.
+    """
+    if _get_last_arg('bcce-quiet', default='auto', is_bool=True) != 'auto':
+        return _get_bool_arg('bcce-quiet', default={quiet})
+    return {quiet}
+
+
 @functools.lru_cache(maxsize=None)
 def _non_bcce_args():
     """Returns `sys.argv[1:]` with all bcce args removed."""
@@ -256,12 +266,16 @@ def log_warning(colored_message, uncolored_message=''):
 
 
 def log_info(colored_message, uncolored_message=''):
-    """Log an informative message (in blue) to stderr."""
+    """Log an informative message (in blue) to stderr, unless quietened."""
+    if _quiet():
+        return
     _log_with_sgr(SGR.FG_BLUE, colored_message, uncolored_message)
 
 
 def log_success(colored_message, uncolored_message=''):
-    """Log a success message (in green) to stderr."""
+    """Log a success message (in green) to stderr, unless quietened."""
+    if _quiet():
+        return
     _log_with_sgr(SGR.FG_GREEN, colored_message, uncolored_message)
 
 
@@ -884,7 +898,7 @@ def _get_files(compile_action):
     if not os.path.isfile(source_file):
         if not _get_files.has_logged_missing_file_error: # Just log once; subsequent messages wouldn't add anything.
             _get_files.has_logged_missing_file_error = True
-            log_warning(f""">>> A source file you compile doesn't (yet) exist: {source_file}
+            log_info(f""">>> A source file you compile doesn't (yet) exist: {source_file}
     It's probably a generated file, and you haven't yet run a build to generate it.
     That's OK; your code doesn't even have to compile for this tool to work.
     If you can, though, you might want to run a build of your code with --keep_going.
