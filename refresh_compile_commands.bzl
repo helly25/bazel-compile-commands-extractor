@@ -51,6 +51,10 @@ refresh_compile_commands(
         # If you'd rather trust those `.d` files (reusing them based on mtime alone), set:
         # trust_bazel_dep_files = True,
         # ^ Restores the fast path. Tradeoff: if you change compile flags that change which headers are included but don't rebuild, you may get slightly stale headers until the next build. Off by default to keep results exact.
+    # Tired of your next build re-analysing everything after a refresh?
+        # Our aquery overrides three features, which makes it a different configuration than your build, so the server discards the analysis cache. If your build enables none of them, set:
+        # inherit_build_features = True,
+        # ^ The aquery then shares your build's configuration. Check first: `layering_check` with a clang toolchain adds generated module maps that header extraction cannot preprocess before a build.
     # Still not fast enough?
         # Make sure you're specifying just the targets you care about by setting `targets`, above.
 
@@ -74,6 +78,7 @@ def refresh_compile_commands(
         targets = None,
         exclude_headers = None,
         exclude_external_sources = False,
+        inherit_build_features = False,
         trust_bazel_dep_files = False,
         update_gitignore = True,
         # Macro-only by design; there is no `--bcce-bazel` runtime counterpart.
@@ -106,7 +111,7 @@ def refresh_compile_commands(
 
     # Generate the core, runnable python script from refresh.template.py
     script_name = name + ".py"
-    _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, trust_bazel_dep_files = trust_bazel_dep_files, update_gitignore = update_gitignore, bazel_command = bazel_command, max_threads = max_threads, output_dir = output_dir, **kwargs)
+    _expand_template(name = script_name, labels_to_flags = targets, exclude_headers = exclude_headers, exclude_external_sources = exclude_external_sources, inherit_build_features = inherit_build_features, trust_bazel_dep_files = trust_bazel_dep_files, update_gitignore = update_gitignore, bazel_command = bazel_command, max_threads = max_threads, output_dir = output_dir, **kwargs)
 
     # Combine them so the wrapper calls the main script.
     # Tag "manual" so `bazel build //...` won't try to build this when
@@ -144,6 +149,7 @@ def _expand_template_impl(ctx):
             "{bazel_command}": repr(ctx.attr.bazel_command),
             "{exclude_external_sources}": repr(ctx.attr.exclude_external_sources),
             "{exclude_headers}": repr(ctx.attr.exclude_headers),
+            "{inherit_build_features}": repr(ctx.attr.inherit_build_features),
             "{max_threads}": repr(ctx.attr.max_threads if ctx.attr.max_threads > 0 else None),
             "{output_dir}": repr(ctx.attr.output_dir),
             "{print_args_executable}": repr(ctx.executable._print_args_executable.path),
@@ -158,6 +164,7 @@ _expand_template = rule(
         "bazel_command": attr.string(default = "bazel"),
         "exclude_external_sources": attr.bool(default = False),
         "exclude_headers": attr.string(values = ["all", "external", ""]),  # "" needed only for compatibility with Bazel < 3.6.0
+        "inherit_build_features": attr.bool(default = False),  # Let the aquery use the build's features instead of overriding three of them, so it shares the build's configuration and analysis cache. Only safe once you know your build does not enable them.
         "labels_to_flags": attr.string_dict(mandatory = True),  # string keys instead of label_keyed because Bazel doesn't support parsing wildcard target patterns (..., *, :all) in BUILD attributes.
         "max_threads": attr.int(default = 0),  # 0 means "use the historical default" inside refresh.template.py
         "output_dir": attr.string(default = ""),  # Empty means: write to the workspace root (cwd, the historical behaviour).
