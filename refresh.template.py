@@ -644,6 +644,13 @@ def _get_headers_msvc(compile_action, source_path: str):
     # Non-Bazel Windows users would normally configure these by calling vcvars
         # For more, see https://docs.microsoft.com/en-us/cpp/build/building-on-the-command-line
     environment = compile_action.environmentVariables.copy()
+    # cl.exe fails with "Command line error D8037: cannot create temporary il file" unless SystemRoot is set.
+    # Bazel does not declare it per action--it adds the system directories to PATH instead--so a real spawn inherits it from the server's environment and it never shows up in aquery output. We reconstruct the environment, so we pass it ourselves, as we do for PATH.
+    if not any(key.upper() == 'SYSTEMROOT' for key in environment):
+        for system_root_variable in ('SystemRoot', 'SYSTEMROOT'):
+            if system_root_variable in os.environ:
+                environment['SystemRoot'] = os.environ[system_root_variable]
+                break
     if 'INCLUDE' not in environment:
         environment['INCLUDE'] = os.pathsep.join((
             # Begin: template filled by Bazel
