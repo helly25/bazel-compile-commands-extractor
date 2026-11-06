@@ -250,6 +250,7 @@ corresponding macro parameter for a single run. Precedence:
 | `--bcce-trust-bazel-dep-files` (or `--nobcce-trust-bazel-dep-files`) | Reuse Bazel's `.d` dependency files based on mtime alone, restoring the header-extraction fast path on Bazel 9. Override `trust_bazel_dep_files`. |
 | `--bcce-inherit-build-features` (or `--nobcce-inherit-build-features`) | Let the aquery use your build's features rather than overriding `compiler_param_file`, `layering_check` and `parse_headers`, so it shares your build's configuration and does not discard its analysis cache. Off by default. Overrides `inherit_build_features`. |
 | `--bcce-prefer-target-config` (or `--nobcce-prefer-target-config`) | Emit only the target-configuration command for files that are compiled in both the target and the exec configuration. Off by default. |
+| `--bcce-quiet` (or `--nobcce-quiet`) | Suppress progress messages; warnings and errors still print. Off by default. Overrides `quiet`. |
 | `--bcce-update-gitignore` (or `--nobcce-update-gitignore`) | Add ignore entries for the output we generate to `.git/info/exclude`. On by default. Overrides `update_gitignore`. |
 
 Notes:
